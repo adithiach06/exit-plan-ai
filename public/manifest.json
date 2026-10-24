@@ -1,0 +1,16 @@
+{
+  "short_name": "ExitPlanAI",
+  "name": "EXIT PLAN AI - Travel Safety & Cybersecurity",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any 192x192 512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#F7F5EF",
+  "theme_color": "#183D32",
+  "display": "standalone",
+  "orientation": "portrait"
+}

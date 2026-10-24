@@ -9,11 +9,8 @@ import {
   InfoIcon,
   PhoneIcon,
   LockIcon,
-  FileTextIcon,
-  CompassIcon,
-  ArrowRightIcon,
   CloseIcon,
-  MessageSquareIcon
+  ArrowRightIcon
 } from '../components/common/Icons';
 import { analyzeMessageLocally, SAMPLE_MESSAGES } from '../services/scamDetector';
 
@@ -44,8 +41,18 @@ export const MessageScanner = () => {
   const handleAnalyze = (e) => {
     if (e) e.preventDefault();
 
-    if (!inputText.trim()) {
+    const trimmed = (inputText || '').trim();
+
+    if (!trimmed) {
       setValidationError('Please paste or type a travel message to analyze.');
+      setAnalysisResult(null);
+      return;
+    }
+
+    if (trimmed.length < 15) {
+      setValidationError(
+        'Message is too short to analyse meaningfully. Please provide more content (at least 15 characters), such as the complete SMS, WhatsApp message, or payment request.'
+      );
       setAnalysisResult(null);
       return;
     }
@@ -55,7 +62,7 @@ export const MessageScanner = () => {
 
     // Brief processing timeout for smooth UI transition
     setTimeout(() => {
-      const result = analyzeMessageLocally(inputText);
+      const result = analyzeMessageLocally(trimmed);
       setAnalysisResult(result);
       setIsScanning(false);
 
@@ -67,15 +74,31 @@ export const MessageScanner = () => {
     }, 280);
   };
 
+  // Helper to determine risk meter bar color
+  const getMeterColor = (level) => {
+    switch (level) {
+      case 'Critical':
+        return 'var(--color-danger, #991B1B)';
+      case 'High':
+        return 'var(--color-terracotta, #C9785B)';
+      case 'Medium':
+        return 'var(--color-warning, #B45309)';
+      case 'Low':
+      default:
+        return 'var(--color-forest, #183D32)';
+    }
+  };
+
   return (
     <div>
       {/* Editorial Header */}
       <div className="section-intro">
         <div className="kicker">Stage 3 &bull; Travel Cybersecurity</div>
-        <h1>Scam Shield & Message Scanner</h1>
+        <h1>Scam Shield &amp; Message Scanner</h1>
         <p>
           Analyze suspicious travel-related communications: fraudulent hotel cancellation alerts,
-          fake cab driver UPI payment requests, unverified discount lotteries, and dubious railway re-ticketing links.
+          fake cab driver UPI payment requests, unverified discount lotteries, off-platform booking diversion,
+          and digital arrest extortion attempts.
         </p>
       </div>
 
@@ -104,7 +127,7 @@ export const MessageScanner = () => {
           </div>
           <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-charcoal)', margin: 0, lineHeight: 1.55 }}>
             Message analysis runs locally on your device using deterministic cybersecurity heuristics. Your pasted text is
-            never transmitted to external servers, uploaded to third-party databases, or shared with commercial trackers.
+            never transmitted to external servers, uploaded to third-party databases, or retained in persistent storage.
           </p>
         </div>
       </div>
@@ -140,11 +163,14 @@ export const MessageScanner = () => {
                 <span
                   style={{
                     fontSize: 'var(--text-2xs)',
-                    color: sample.category.includes('High')
-                      ? 'var(--color-terracotta-dark)'
-                      : sample.category.includes('Medium')
-                      ? 'var(--color-charcoal-muted)'
-                      : 'var(--color-forest)',
+                    color:
+                      sample.riskLevel === 'Critical'
+                        ? 'var(--color-danger, #991B1B)'
+                        : sample.riskLevel === 'High'
+                        ? 'var(--color-terracotta-dark)'
+                        : sample.riskLevel === 'Medium'
+                        ? 'var(--color-warning, #B45309)'
+                        : 'var(--color-forest)',
                     fontWeight: 700
                   }}
                 >
@@ -184,7 +210,7 @@ export const MessageScanner = () => {
             ></textarea>
 
             {validationError && (
-              <div id="message-input-error" className="form-error">
+              <div id="message-input-error" className="form-error" role="alert">
                 <AlertIcon size={14} />
                 <span>{validationError}</span>
               </div>
@@ -209,7 +235,7 @@ export const MessageScanner = () => {
                 icon={ShieldIcon}
                 disabled={isScanning}
               >
-                {isScanning ? 'Scanning Threat Signatures...' : 'Analyse Message'}
+                {isScanning ? 'Scanning Threat Signatures...' : 'Scan Message'}
               </Button>
 
               {(inputText || analysisResult) && (
@@ -238,26 +264,74 @@ export const MessageScanner = () => {
         <section
           id="scam-analysis-results"
           style={{ marginTop: 'var(--space-8)', scrollMarginTop: '80px' }}
+          role="region"
+          aria-live="polite"
         >
           {/* Main Risk Assessment Card */}
           <Card
-            variant={analysisResult.riskLevel === 'High' ? 'terracotta' : 'editorial'}
+            variant={
+              analysisResult.riskLevel === 'Critical' || analysisResult.riskLevel === 'High'
+                ? 'terracotta'
+                : analysisResult.riskLevel === 'Medium'
+                ? 'editorial'
+                : 'default'
+            }
             kicker="Cybersecurity Risk Assessment"
             title={
-              analysisResult.riskLevel === 'High'
+              analysisResult.riskLevel === 'Critical'
+                ? 'Critical Threat: Coercive Fraud / Credential Theft'
+                : analysisResult.riskLevel === 'High'
                 ? 'High Risk: Travel Fraud Indicators Detected'
                 : analysisResult.riskLevel === 'Medium'
                 ? 'Caution Advised: Unverified Travel Patterns'
                 : 'Low Risk Indicators Detected'
             }
             headerAction={
-              <Badge variant={analysisResult.riskBadgeVariant}>
-                {analysisResult.riskLevel === 'High' && <AlertIcon size={12} />}
-                {analysisResult.riskLevel === 'Low' && <CheckIcon size={12} />}
-                <span>{analysisResult.riskLevel} Risk</span>
-              </Badge>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <Badge variant={analysisResult.riskBadgeVariant}>
+                  {(analysisResult.riskLevel === 'Critical' || analysisResult.riskLevel === 'High') && <AlertIcon size={12} />}
+                  {analysisResult.riskLevel === 'Low' && <CheckIcon size={12} />}
+                  <span>{analysisResult.riskLevel} Risk</span>
+                </Badge>
+                <Badge variant="outline">
+                  <span>Score: {analysisResult.riskScore} / 100</span>
+                </Badge>
+              </div>
             }
           >
+            {/* Visual Numerical Risk Meter (0 to 100) */}
+            <div className="risk-meter-container">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-forest)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Threat Risk Index: {analysisResult.riskScore} / 100
+                </span>
+                <span
+                  style={{
+                    fontSize: 'var(--text-xs)',
+                    fontWeight: 700,
+                    color: getMeterColor(analysisResult.riskLevel)
+                  }}
+                >
+                  {analysisResult.riskLevel === 'Critical'
+                    ? 'Critical Threat (80–100)'
+                    : analysisResult.riskLevel === 'High'
+                    ? 'High Risk (51–79)'
+                    : analysisResult.riskLevel === 'Medium'
+                    ? 'Moderate Caution (21–50)'
+                    : 'Low Risk (0–20)'}
+                </span>
+              </div>
+              <div className="risk-meter-track" role="progressbar" aria-valuenow={analysisResult.riskScore} aria-valuemin="0" aria-valuemax="100">
+                <div
+                  className="risk-meter-fill"
+                  style={{
+                    width: `${Math.max(5, analysisResult.riskScore)}%`,
+                    backgroundColor: getMeterColor(analysisResult.riskLevel)
+                  }}
+                ></div>
+              </div>
+            </div>
+
             {/* Risk Summary Diagnostic */}
             <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-charcoal)', lineHeight: 1.6, marginBottom: 'var(--space-4)' }}>
               {analysisResult.summary}
@@ -277,16 +351,16 @@ export const MessageScanner = () => {
               }}
             >
               <strong>Heuristic Assessment Limitation:</strong> This analysis evaluates known travel phishing patterns,
-              credential harvest techniques, and domain spoofing signatures. An assessment of "Low Risk" does not guarantee
-              that a sender or transaction is safe or authentic, as sophisticated scammers may mimic legitimate templates.
-              Conversely, minor guesthouses occasionally share personal UPI IDs legitimately. Always confirm independently before making payments.
+              credential harvest techniques, and domain spoofing signatures. An assessment of "Low Risk" indicates that
+              no overt deceptive keywords were identified, but does not guarantee that a sender or transaction is authentic.
+              Conversely, small rural homestays in India occasionally accept personal UPI legitimately. Always verify independently through official contact channels before transferring funds.
             </div>
 
             {/* Highlighted / Extracted Suspicious Phrases */}
             {analysisResult.extractedPhrases.length > 0 && (
               <div style={{ marginBottom: 'var(--space-6)' }}>
                 <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-forest)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.5rem' }}>
-                  Extracted Suspicious Phrases ({analysisResult.extractedPhrases.length})
+                  Extracted Threat Signatures ({analysisResult.extractedPhrases.length})
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                   {analysisResult.extractedPhrases.map((phrase, idx) => (
@@ -322,25 +396,66 @@ export const MessageScanner = () => {
                       No Known Travel Threat Patterns Triggered
                     </div>
                     <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-charcoal-muted)', margin: 0 }}>
-                      The message does not contain urgent payment countdowns, OTP requests, shortened URLs, or obvious platform bypass terms.
+                      The message does not contain urgent payment countdowns, OTP requests, shortened URLs, location requests, or obvious platform bypass terms.
                     </p>
                   </div>
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   {analysisResult.warnings.map((warning) => (
-                    <div key={warning.id} className="warning-item-card">
+                    <div
+                      key={warning.id}
+                      className={`warning-item-card ${
+                        warning.severity === 'critical'
+                          ? 'warning-critical'
+                          : warning.severity === 'high'
+                          ? 'warning-high'
+                          : 'warning-medium'
+                      }`}
+                    >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem', flexWrap: 'wrap', gap: '0.25rem' }}>
                         <span style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--color-forest)' }}>
                           {warning.title}
                         </span>
-                        <Badge variant={warning.severity === 'critical' ? 'alert' : 'outline'}>
-                          {warning.category}
-                        </Badge>
+                        <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+                          <Badge variant={warning.severity === 'critical' ? 'alert' : 'outline'}>
+                            {warning.category}
+                          </Badge>
+                          <Badge
+                            variant={
+                              warning.severity === 'critical'
+                                ? 'alert'
+                                : warning.severity === 'high'
+                                ? 'terracotta'
+                                : 'outline'
+                            }
+                          >
+                            {warning.severity.toUpperCase()}
+                          </Badge>
+                        </div>
                       </div>
+
                       <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-charcoal)', margin: 0, lineHeight: 1.55 }}>
                         {warning.description}
                       </p>
+
+                      {warning.whyItMatters && (
+                        <div
+                          style={{
+                            marginTop: '0.5rem',
+                            padding: '0.45rem 0.65rem',
+                            backgroundColor: 'var(--color-ivory-light)',
+                            border: '1px solid var(--border-subtle)',
+                            borderRadius: 'var(--radius-xs)',
+                            fontSize: 'var(--text-2xs)',
+                            color: 'var(--color-charcoal-muted)',
+                            lineHeight: 1.45
+                          }}
+                        >
+                          <strong style={{ color: 'var(--color-forest)' }}>Why this matters:</strong> {warning.whyItMatters}
+                        </div>
+                      )}
+
                       {warning.snippet && (
                         <div style={{ marginTop: '0.4rem', fontSize: 'var(--text-2xs)', color: 'var(--color-charcoal-muted)' }}>
                           Matched phrase: <span className="phrase-tag">"{warning.snippet}"</span>
@@ -393,7 +508,7 @@ export const MessageScanner = () => {
               </div>
             </div>
 
-            {/* Account & Payment Protection Callout (Helpline 1930) */}
+            {/* Account & Payment Protection Callout (Helplines 1930 & 112) */}
             <div
               style={{
                 backgroundColor: 'var(--color-alert-bg)',
@@ -411,22 +526,30 @@ export const MessageScanner = () => {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <LockIcon size={16} />
                   <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-terracotta-dark)', textTransform: 'uppercase' }}>
-                    Cyber Crime & Financial Fraud Escalation (India)
+                    Cyber Crime &amp; Physical Safety Escalation (India)
                   </span>
                 </div>
                 <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-charcoal)', margin: '0.25rem 0 0 0', lineHeight: 1.45 }}>
-                  If you transferred money, shared an OTP, or compromised banking credentials, call the National Cyber Crime Helpline immediately.
+                  If you transferred money or compromised banking credentials, dial <strong>1930</strong> immediately. If you feel physically threatened or monitored, dial <strong>112</strong> / <strong>1091</strong>.
                 </p>
               </div>
 
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                 <a
                   href="tel:1930"
                   className="btn btn-emergency btn-sm"
                   style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
                 >
                   <PhoneIcon size={13} />
-                  <span>Dial 1930</span>
+                  <span>Dial 1930 (Cyber)</span>
+                </a>
+                <a
+                  href="tel:112"
+                  className="btn btn-secondary btn-sm"
+                  style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+                >
+                  <PhoneIcon size={13} />
+                  <span>Dial 112 (SOS)</span>
                 </a>
               </div>
             </div>
@@ -467,11 +590,11 @@ export const MessageScanner = () => {
 
           <Card
             variant="default"
-            kicker="Payment Trap"
-            title="Reverse UPI Request Scam"
+            kicker="Extortion Scams"
+            title="Digital Arrest & Video Coercion"
           >
             <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-charcoal-muted)', lineHeight: 1.55 }}>
-              Touts claim to send you a refund or deposit through Google Pay / PhonePe, but send a "Collect Money" request instead. Entering your PIN authorizes money leaving your account.
+              Imposters posing as police or airport customs officers call travellers, claim an illegal parcel was seized in their name, and threaten immediate arrest unless "clearance deposits" are transferred.
             </p>
           </Card>
         </div>

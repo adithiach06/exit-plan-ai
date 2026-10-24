@@ -24,6 +24,7 @@ import {
 import {
   HAVEN_CATEGORIES,
   POPULAR_LOCATIONS,
+  AVAILABLE_SEARCH_RADII,
   geocodeLocation,
   reverseGeocode,
   fetchLiveSafeHavens
@@ -42,6 +43,11 @@ export const AssistanceMap = () => {
   const [activeCategory, setActiveCategory] = useState('all');
   const [facilities, setFacilities] = useState([]);
   const [selectedFacilityId, setSelectedFacilityId] = useState(null);
+
+  // Search Radius and Quick Filter states
+  const [searchRadius, setSearchRadius] = useState(6000); // 6 km default (preserves existing behaviour)
+  const [filter24x7, setFilter24x7] = useState(false);
+  const [filterWomenDesk, setFilterWomenDesk] = useState(false);
 
   // Geographic and async states
   const [centerCoords, setCenterCoords] = useState({ lat: DEFAULT_CENTER.lat, lon: DEFAULT_CENTER.lon });
@@ -66,7 +72,7 @@ export const AssistanceMap = () => {
   const facilityCardsRef = useRef({});
 
   // ---------------------------------------------------------------------------
-  // Leaflet Map Initialization & Cleanup
+  // Leaflet Map Initialization, Stability & Cleanup
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!mapContainerRef.current) return;
@@ -90,7 +96,33 @@ export const AssistanceMap = () => {
       mapInstanceRef.current = map;
     }
 
+    // Call invalidateSize after initial render layout settles
+    const layoutTimer = setTimeout(() => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.invalidateSize();
+      }
+    }, 350);
+
+    // Debounced resize & orientation change listener
+    let resizeTimer = null;
+    const handleResize = () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.invalidateSize({ debounceMoveend: true });
+        }
+      }, 200);
+    };
+
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
+
     return () => {
+      clearTimeout(layoutTimer);
+      clearTimeout(resizeTimer);
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
+
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
@@ -105,14 +137,21 @@ export const AssistanceMap = () => {
   // Initial Load: Fetch safe havens for default city
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    loadHavensForCoordinates(DEFAULT_CENTER.lat, DEFAULT_CENTER.lon, DEFAULT_CENTER.label, 'all');
+    loadHavensForCoordinates(DEFAULT_CENTER.lat, DEFAULT_CENTER.lon, DEFAULT_CENTER.label, 'all', null, 6000);
   }, []);
 
   // ---------------------------------------------------------------------------
   // Fetch POIs for a specific coordinate and category
   // CRITICAL: Map center and coordinates update IMMEDIATELY, decoupled from POI fetching
   // ---------------------------------------------------------------------------
-  const loadHavensForCoordinates = async (lat, lon, label, category = activeCategory, explicitRequestId) => {
+  const loadHavensForCoordinates = async (
+    lat,
+    lon,
+    label,
+    category = activeCategory,
+    explicitRequestId,
+    radius = searchRadius
+  ) => {
     const currentReqId = explicitRequestId || ++activeRequestIdRef.current;
 
     // 1. Immediately update coordinates, label, and map view
@@ -122,7 +161,14 @@ export const AssistanceMap = () => {
     setSelectedFacilityId(null);
 
     if (mapInstanceRef.current) {
-      mapInstanceRef.current.setView([lat, lon], 14, { animate: true });
+      const zoomLevel = radius <= 2500 ? 15 : radius >= 10000 ? 13 : 14;
+      mapInstanceRef.current.setView([lat, lon], zoomLevel, { animate: true });
+      // Ensure tiles render completely
+      setTimeout(() => {
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.invalidateSize();
+        }
+      }, 150);
     }
 
     setIsLoading(true);
@@ -139,12 +185,12 @@ export const AssistanceMap = () => {
           : category === 'bus'
           ? 'bus terminals'
           : 'hotels and accommodations'
-      }...`
+      } (within ${radius / 1000} km)...`
     );
     setErrorMessage(null);
 
     try {
-      const result = await fetchLiveSafeHavens(lat, lon, category, 6000);
+      const result = await fetchLiveSafeHavens(lat, lon, category, radius);
 
       // Check if a newer request has started while this was in-flight
       if (currentReqId !== activeRequestIdRef.current) return;
@@ -168,7 +214,16 @@ export const AssistanceMap = () => {
   const handleCategoryChange = (newCatId) => {
     setActiveCategory(newCatId);
     setSelectedFacilityId(null);
-    loadHavensForCoordinates(centerCoords.lat, centerCoords.lon, currentLocationName, newCatId);
+    loadHavensForCoordinates(centerCoords.lat, centerCoords.lon, currentLocationName, newCatId, null, searchRadius);
+  };
+
+  // ---------------------------------------------------------------------------
+  // Radius Selector Click
+  // ---------------------------------------------------------------------------
+  const handleRadiusChange = (newRadius) => {
+    setSearchRadius(newRadius);
+    setSelectedFacilityId(null);
+    loadHavensForCoordinates(centerCoords.lat, centerCoords.lon, currentLocationName, activeCategory, null, newRadius);
   };
 
   // ---------------------------------------------------------------------------
@@ -202,11 +257,12 @@ export const AssistanceMap = () => {
       setCenterCoords({ lat: bestMatch.lat, lon: bestMatch.lon });
 
       if (mapInstanceRef.current) {
-        mapInstanceRef.current.setView([bestMatch.lat, bestMatch.lon], 14, { animate: true });
+        const zoomLevel = searchRadius <= 2500 ? 15 : searchRadius >= 10000 ? 13 : 14;
+        mapInstanceRef.current.setView([bestMatch.lat, bestMatch.lon], zoomLevel, { animate: true });
       }
 
       // Fetch facilities for this location
-      await loadHavensForCoordinates(bestMatch.lat, bestMatch.lon, cleanLabel, activeCategory, currentReqId);
+      await loadHavensForCoordinates(bestMatch.lat, bestMatch.lon, cleanLabel, activeCategory, currentReqId, searchRadius);
     } catch (err) {
       if (currentReqId !== activeRequestIdRef.current) return;
       setErrorMessage(err.message);
@@ -241,7 +297,8 @@ export const AssistanceMap = () => {
         setCenterCoords({ lat, lon });
 
         if (mapInstanceRef.current) {
-          mapInstanceRef.current.setView([lat, lon], 14, { animate: true });
+          const zoomLevel = searchRadius <= 2500 ? 15 : searchRadius >= 10000 ? 13 : 14;
+          mapInstanceRef.current.setView([lat, lon], zoomLevel, { animate: true });
         }
         setIsLocating(false);
 
@@ -250,12 +307,12 @@ export const AssistanceMap = () => {
           if (currentReqId !== activeRequestIdRef.current) return;
           const label = `Current Location: ${areaName}`;
           setCurrentLocationName(label);
-          await loadHavensForCoordinates(lat, lon, label, activeCategory, currentReqId);
+          await loadHavensForCoordinates(lat, lon, label, activeCategory, currentReqId, searchRadius);
         } catch {
           if (currentReqId !== activeRequestIdRef.current) return;
           const label = `Location (${lat.toFixed(4)}, ${lon.toFixed(4)})`;
           setCurrentLocationName(label);
-          await loadHavensForCoordinates(lat, lon, label, activeCategory, currentReqId);
+          await loadHavensForCoordinates(lat, lon, label, activeCategory, currentReqId, searchRadius);
         }
       },
       (err) => {
@@ -279,6 +336,23 @@ export const AssistanceMap = () => {
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
     );
   };
+
+  // ---------------------------------------------------------------------------
+  // Client-Side Quick Filtering (Applied Instantly to Retrieved Facilities)
+  // ---------------------------------------------------------------------------
+  const displayedFacilities = useMemo(() => {
+    return facilities.filter((facility) => {
+      // 24/7 filter requires verified open hours
+      if (filter24x7 && !facility.is24_7) {
+        return false;
+      }
+      // Women desk filter requires verified police women desk tag
+      if (filterWomenDesk && !facility.isWomenDesk) {
+        return false;
+      }
+      return true;
+    });
+  }, [facilities, filter24x7, filterWomenDesk]);
 
   // ---------------------------------------------------------------------------
   // Sync Leaflet Markers with Current Facilities & Center Waypoint
@@ -343,8 +417,8 @@ export const AssistanceMap = () => {
       userMarkerRef.current = userMarker;
     }
 
-    // 3. Facility Markers
-    facilities.forEach((facility) => {
+    // 3. Facility Markers (Filtered by active quick filters)
+    displayedFacilities.forEach((facility) => {
       const isSelected = facility.id === selectedFacilityId;
 
       let iconSnippet = '';
@@ -372,6 +446,16 @@ export const AssistanceMap = () => {
         popupAnchor: [0, -36]
       });
 
+      // Context-appropriate emergency helpline fallback if local phone is unlisted
+      const emergencyHelpline =
+        facility.category === 'police'
+          ? { number: '112', label: '112 (Police / Emergency)' }
+          : facility.category === 'medical'
+          ? { number: '108', label: '108 (Ambulance Helpline)' }
+          : facility.category === 'railway'
+          ? { number: '139', label: '139 (Railway Security)' }
+          : { number: '112', label: '112 (Emergency)' };
+
       const popupHtml = `
         <div class="custom-leaflet-popup-inner">
           <div style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: ${
@@ -381,7 +465,7 @@ export const AssistanceMap = () => {
               ? '#183D32'
               : '#575D57'
           }; margin-bottom: 0.25rem;">
-            ${facility.subcategory} ${facility.is24_7 ? '&bull; 24/7' : ''}
+            ${facility.subcategory} ${facility.is24_7 ? '&bull; 24/7' : ''} ${facility.isWomenDesk ? '&bull; Mahila Desk' : ''}
           </div>
           <strong style="font-size: 0.92rem; color: #183D32; display: block; line-height: 1.25; margin-bottom: 0.35rem;">
             ${facility.name}
@@ -391,6 +475,13 @@ export const AssistanceMap = () => {
               ? `<p style="font-size: 0.76rem; color: #575D57; margin-bottom: 0.45rem;">${facility.address}</p>`
               : ''
           }
+          <div style="margin-bottom: 0.45rem; font-size: 0.75rem;">
+            ${
+              facility.phone
+                ? `<a href="tel:${facility.phone}" style="color: #183D32; font-weight: 600; text-decoration: underline;">Call: ${facility.phone}</a>`
+                : `<span style="color: #575D57; font-size: 0.7rem;">Phone unlisted &bull; </span><a href="tel:${emergencyHelpline.number}" style="color: #C9785B; font-weight: 700; text-decoration: underline;">Call ${emergencyHelpline.label}</a>`
+            }
+          </div>
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem; padding-top: 0.4rem; border-top: 1px solid #EFECE1;">
             <span style="font-size: 0.72rem; font-weight: 600; color: #183D32;">
               ${facility.distanceKm != null ? `${facility.distanceKm} km away` : ''}
@@ -414,7 +505,7 @@ export const AssistanceMap = () => {
       layerGroup.addLayer(marker);
       markerMapRef.current.set(facility.id, marker);
     });
-  }, [facilities, selectedFacilityId, userCoords, centerCoords, currentLocationName]);
+  }, [displayedFacilities, selectedFacilityId, userCoords, centerCoords, currentLocationName]);
 
   // ---------------------------------------------------------------------------
   // Select Facility from Card List
@@ -608,7 +699,7 @@ export const AssistanceMap = () => {
               type="button"
               onClick={() => {
                 setSearchInput(loc.label);
-                loadHavensForCoordinates(loc.lat, loc.lon, loc.label, activeCategory);
+                loadHavensForCoordinates(loc.lat, loc.lon, loc.label, activeCategory, null, searchRadius);
               }}
               style={{
                 fontSize: 'var(--text-2xs)',
@@ -657,7 +748,7 @@ export const AssistanceMap = () => {
           gap: '0.5rem',
           overflowX: 'auto',
           paddingBottom: '0.5rem',
-          marginBottom: 'var(--space-6)'
+          marginBottom: 'var(--space-4)'
         }}
       >
         {HAVEN_CATEGORIES.map((cat) => {
@@ -672,11 +763,92 @@ export const AssistanceMap = () => {
               {renderCategoryIcon(cat.id)}
               <span>{cat.label}</span>
               {isActive && (
-                <span className="category-count-badge">{facilities.length}</span>
+                <span className="category-count-badge">
+                  {displayedFacilities.length}
+                  {displayedFacilities.length !== facilities.length ? ` / ${facilities.length}` : ''}
+                </span>
               )}
             </button>
           );
         })}
+      </div>
+
+      {/* Radius & Quick Filter Subcontrols Bar */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '0.75rem',
+          padding: '0.65rem 0.85rem',
+          backgroundColor: 'var(--color-ivory-light)',
+          borderRadius: 'var(--radius-sm)',
+          border: '1px solid var(--border-subtle)',
+          marginBottom: 'var(--space-4)'
+        }}
+      >
+        {/* Left: Radius Selector */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--color-charcoal-muted)' }}>
+            Search Radius:
+          </span>
+          <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+            {AVAILABLE_SEARCH_RADII.map((rad) => {
+              const isSelected = searchRadius === rad.value;
+              return (
+                <button
+                  key={rad.value}
+                  type="button"
+                  disabled={isLoading}
+                  onClick={() => handleRadiusChange(rad.value)}
+                  className={`radius-pill-btn ${isSelected ? 'active' : ''}`}
+                >
+                  {rad.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Right: Quick Filters (In-Memory client filtering) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--color-charcoal-muted)' }}>
+            Quick Filters:
+          </span>
+          <button
+            type="button"
+            onClick={() => setFilter24x7((prev) => !prev)}
+            className={`quick-toggle-btn ${filter24x7 ? 'active-247' : ''}`}
+            title="Show only facilities verified with 24/7 opening hours in OpenStreetMap"
+          >
+            <span>Open 24/7</span>
+            {filter24x7 && <CheckIcon size={12} />}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setFilterWomenDesk((prev) => !prev)}
+            className={`quick-toggle-btn ${filterWomenDesk ? 'active-women' : ''}`}
+            title="Show only police stations verified with Mahila / Women Helpdesks"
+          >
+            <span>Women Desk Only</span>
+            {filterWomenDesk && <CheckIcon size={12} />}
+          </button>
+
+          {(filter24x7 || filterWomenDesk) && (
+            <button
+              type="button"
+              onClick={() => {
+                setFilter24x7(false);
+                setFilterWomenDesk(false);
+              }}
+              className="quick-toggle-clear-btn"
+            >
+              Reset Filters
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Active Search Context Bar */}
@@ -695,16 +867,27 @@ export const AssistanceMap = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <MapPinIcon size={16} />
           <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--color-charcoal)' }}>
-            Showing Safe Havens within 6 km of: <strong>{currentLocationName}</strong>
+            Showing Safe Havens within {searchRadius / 1000} km of: <strong>{currentLocationName}</strong>
           </span>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <span style={{ fontSize: 'var(--text-2xs)', color: 'var(--color-charcoal-muted)' }}>
-            {facilities.length} facilities found
+            {displayedFacilities.length !== facilities.length
+              ? `Showing ${displayedFacilities.length} of ${facilities.length} facilities`
+              : `${facilities.length} facilities found`}
           </span>
           <button
-            onClick={() => loadHavensForCoordinates(centerCoords.lat, centerCoords.lon, currentLocationName, activeCategory)}
+            onClick={() =>
+              loadHavensForCoordinates(
+                centerCoords.lat,
+                centerCoords.lon,
+                currentLocationName,
+                activeCategory,
+                null,
+                searchRadius
+              )
+            }
             disabled={isLoading}
             style={{
               display: 'inline-flex',
@@ -809,15 +992,58 @@ export const AssistanceMap = () => {
                   <h3 style={{ fontSize: 'var(--text-base)', color: 'var(--color-terracotta-dark)', marginBottom: '0.35rem' }}>
                     Live Facility Query Failed
                   </h3>
-                  <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-charcoal)', lineHeight: 1.5, marginBottom: '0.75rem' }}>
+                  <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-charcoal)', lineHeight: 1.5, marginBottom: '0.65rem' }}>
                     {errorMessage}
                   </p>
-                  <p style={{ fontSize: 'var(--text-2xs)', color: 'var(--color-charcoal-muted)', marginBottom: '0.75rem' }}>
-                    <strong>Notice:</strong> EXIT PLAN AI connects exclusively to real-world OpenStreetMap servers and will never display fabricated, simulated, or hardcoded listings when public endpoints are unreachable. Your map above has moved to the searched coordinates ({currentLocationName}).
+                  <p style={{ fontSize: 'var(--text-2xs)', color: 'var(--color-charcoal-muted)', marginBottom: '0.75rem', lineHeight: 1.5 }}>
+                    <strong>Important:</strong> An API connectivity failure does <em>not</em> mean no facilities exist in {currentLocationName}. Public OpenStreetMap community servers may be temporarily busy. Your map above has recentred to your searched coordinates. You can retry the query or call the verified emergency numbers below immediately.
                   </p>
+
+                  {/* Immediate Emergency Helplines Available During Outage */}
+                  <div
+                    style={{
+                      padding: '0.65rem 0.85rem',
+                      backgroundColor: '#FFFFFF',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--border-accent)',
+                      marginBottom: '0.85rem'
+                    }}
+                  >
+                    <div style={{ fontSize: 'var(--text-2xs)', fontWeight: 700, color: 'var(--color-terracotta-dark)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.45rem' }}>
+                      Immediate Direct Helplines (Active 24/7 Across India):
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <a href="tel:112" className="emergency-helpline-link" title="National Emergency & Police">
+                        <PhoneIcon size={12} />
+                        <span>Police & Emergency: Call 112</span>
+                      </a>
+                      <a href="tel:108" className="emergency-helpline-link" title="Ambulance & Medical Emergency">
+                        <PhoneIcon size={12} />
+                        <span>Ambulance: Call 108</span>
+                      </a>
+                      <a href="tel:1091" className="emergency-helpline-link" title="Women Helpline">
+                        <PhoneIcon size={12} />
+                        <span>Women Helpline: Call 1091</span>
+                      </a>
+                      <a href="tel:139" className="emergency-helpline-link" title="Railway Security Helpline">
+                        <PhoneIcon size={12} />
+                        <span>Railway Security: Call 139</span>
+                      </a>
+                    </div>
+                  </div>
+
                   <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                     <button
-                      onClick={() => loadHavensForCoordinates(centerCoords.lat, centerCoords.lon, currentLocationName, activeCategory)}
+                      onClick={() =>
+                        loadHavensForCoordinates(
+                          centerCoords.lat,
+                          centerCoords.lon,
+                          currentLocationName,
+                          activeCategory,
+                          null,
+                          searchRadius
+                        )
+                      }
                       className="btn btn-primary btn-sm"
                     >
                       <RefreshCwIcon size={14} />
@@ -826,7 +1052,7 @@ export const AssistanceMap = () => {
                     <button
                       onClick={() => {
                         setSearchInput('Kempegowda Bus Station, Majestic, Bengaluru');
-                        loadHavensForCoordinates(12.9767, 77.5713, 'Bengaluru (Majestic)', activeCategory);
+                        loadHavensForCoordinates(12.9767, 77.5713, 'Bengaluru (Majestic)', activeCategory, null, searchRadius);
                       }}
                       className="btn btn-secondary btn-sm"
                     >
@@ -838,7 +1064,7 @@ export const AssistanceMap = () => {
             </Card>
           )}
 
-          {/* Empty State */}
+          {/* Empty State: 0 Facilities in OSM for this category/radius */}
           {!isLoading && !errorMessage && facilities.length === 0 && (
             <Card
               variant="default"
@@ -854,23 +1080,74 @@ export const AssistanceMap = () => {
               <h3 style={{ fontSize: 'var(--text-base)', color: 'var(--color-forest)', marginBottom: '0.35rem' }}>
                 No facilities found in this category
               </h3>
-              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-charcoal-muted)', maxWidth: '420px', margin: '0 auto 1rem auto' }}>
-                There are no facilities tagged as "{activeCategory}" within 6 km of {currentLocationName} in the OpenStreetMap database.
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-charcoal-muted)', maxWidth: '440px', margin: '0 auto 1rem auto' }}>
+                There are no facilities tagged as "{activeCategory}" within {searchRadius / 1000} km of {currentLocationName} in the OpenStreetMap database.
               </p>
-              {activeCategory !== 'all' && (
+              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+                {activeCategory !== 'all' && (
+                  <button
+                    onClick={() => handleCategoryChange('all')}
+                    className="btn btn-secondary btn-sm"
+                  >
+                    <span>Search All Havens Nearby</span>
+                  </button>
+                )}
+                {searchRadius < 10000 && (
+                  <button
+                    onClick={() => handleRadiusChange(10000)}
+                    className="btn btn-primary btn-sm"
+                  >
+                    <span>Expand Radius to 10 km</span>
+                  </button>
+                )}
+              </div>
+            </Card>
+          )}
+
+          {/* Empty State: Facilities exist, but filtered out by active Quick Filters */}
+          {!isLoading && !errorMessage && facilities.length > 0 && displayedFacilities.length === 0 && (
+            <Card
+              variant="default"
+              style={{
+                textAlign: 'center',
+                padding: 'var(--space-8) var(--space-4)',
+                backgroundColor: '#FFFFFF'
+              }}
+            >
+              <div style={{ color: 'var(--color-charcoal-subtle)', marginBottom: '0.5rem', display: 'flex', justifyContent: 'center' }}>
+                <MapPinIcon size={32} />
+              </div>
+              <h3 style={{ fontSize: 'var(--text-base)', color: 'var(--color-forest)', marginBottom: '0.35rem' }}>
+                No facilities match your active quick filters
+              </h3>
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-charcoal-muted)', maxWidth: '440px', margin: '0 auto 1rem auto' }}>
+                We found <strong>{facilities.length}</strong> facilities within {searchRadius / 1000} km of {currentLocationName}, but none currently match the {filter24x7 && filterWomenDesk ? '24/7 and Women Helpdesk' : filter24x7 ? '24/7' : 'Women Helpdesk'} criteria.
+              </p>
+              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', flexWrap: 'wrap' }}>
                 <button
-                  onClick={() => handleCategoryChange('all')}
-                  className="btn btn-secondary btn-sm"
+                  onClick={() => {
+                    setFilter24x7(false);
+                    setFilterWomenDesk(false);
+                  }}
+                  className="btn btn-primary btn-sm"
                 >
-                  <span>Search All Havens Nearby</span>
+                  <span>Clear Quick Filters</span>
                 </button>
-              )}
+                {searchRadius < 10000 && (
+                  <button
+                    onClick={() => handleRadiusChange(10000)}
+                    className="btn btn-secondary btn-sm"
+                  >
+                    <span>Expand Radius to 10 km</span>
+                  </button>
+                )}
+              </div>
             </Card>
           )}
 
           {/* Facility Cards List */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-            {facilities.map((facility) => {
+            {displayedFacilities.map((facility) => {
               const isSelected = facility.id === selectedFacilityId;
 
               return (
@@ -975,7 +1252,7 @@ export const AssistanceMap = () => {
                     {facility.address || 'Street address not tagged in OpenStreetMap'}
                   </p>
 
-                  {/* Verified Phone Contact if tagged */}
+                  {/* Verified Phone Contact or Emergency Helpline Fallback */}
                   <div
                     style={{
                       fontSize: 'var(--text-xs)',
@@ -983,7 +1260,8 @@ export const AssistanceMap = () => {
                       marginBottom: '0.75rem',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '0.35rem'
+                      flexWrap: 'wrap',
+                      gap: '0.45rem'
                     }}
                   >
                     <PhoneIcon size={14} />
@@ -1000,9 +1278,52 @@ export const AssistanceMap = () => {
                         {facility.phone}
                       </a>
                     ) : (
-                      <span style={{ color: 'var(--color-charcoal-subtle)', fontStyle: 'italic' }}>
-                        Phone not listed in public registry
-                      </span>
+                      <>
+                        <span style={{ color: 'var(--color-charcoal-subtle)', fontStyle: 'italic' }}>
+                          Phone unlisted &bull;
+                        </span>
+                        {facility.category === 'police' ? (
+                          <a
+                            href="tel:112"
+                            className="emergency-helpline-link"
+                            onClick={(e) => e.stopPropagation()}
+                            title="Direct emergency helpline for police"
+                          >
+                            <PhoneIcon size={11} />
+                            <span>Police Helpline: Call 112</span>
+                          </a>
+                        ) : facility.category === 'medical' ? (
+                          <a
+                            href="tel:108"
+                            className="emergency-helpline-link"
+                            onClick={(e) => e.stopPropagation()}
+                            title="Direct emergency helpline for ambulance"
+                          >
+                            <PhoneIcon size={11} />
+                            <span>Ambulance: Call 108</span>
+                          </a>
+                        ) : facility.category === 'railway' ? (
+                          <a
+                            href="tel:139"
+                            className="emergency-helpline-link"
+                            onClick={(e) => e.stopPropagation()}
+                            title="Indian Railways Security Helpline"
+                          >
+                            <PhoneIcon size={11} />
+                            <span>Railway Helpline: Call 139</span>
+                          </a>
+                        ) : (
+                          <a
+                            href="tel:112"
+                            className="emergency-helpline-link"
+                            onClick={(e) => e.stopPropagation()}
+                            title="All-India Emergency Number"
+                          >
+                            <PhoneIcon size={11} />
+                            <span>Emergency: Call 112</span>
+                          </a>
+                        )}
+                      </>
                     )}
                   </div>
 

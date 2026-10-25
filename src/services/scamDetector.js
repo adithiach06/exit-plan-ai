@@ -171,8 +171,52 @@ const THREAT_RULES = [
     title: 'Threats of Arrest, Police Warrants, or Legal Action',
     description: 'Intimidation messages claiming customs detention, narcotics investigations, or police warrants designed to coerce immediate payment.',
     whyItMatters: 'Scammers frequently execute "digital arrest" scams against travellers. Genuine Indian law enforcement agencies (Police, CBI, ED) never demand money transfers over WhatsApp or telephone to resolve cases.',
-    pattern: /\b(?:police warrant|arrest warrant|customs detention|narcotics department|enforcement directorate|legal action will be taken|fir registered|court notice|immigration penalty|detained at airport|digital arrest|urgent police notice)\b/i,
-    extractRegex: /\b(?:police warrant|arrest warrant|customs detention|narcotics department|enforcement directorate|legal action will be taken|fir registered|court notice|immigration penalty|detained at airport|digital arrest|urgent police notice)\b/i
+    pattern: /\b(?:police warrant|arrest warrant|non[- ]bailable warrant|under arrest|will be arrested|immediate arrest|avoid arrest|fir (?:has been |is )?registered|criminal case (?:registered|filed)|custodial (?:interrogation|remand)|detained at airport|customs detention|digital arrest|court notice|court summons|immigration penalty|legal action will be taken|urgent police notice)\b/i,
+    extractRegex: /\b(?:police warrant|arrest warrant|non[- ]bailable warrant|under arrest|will be arrested|immediate arrest|avoid arrest|fir (?:has been |is )?registered|criminal case (?:registered|filed)|custodial (?:interrogation|remand)|detained at airport|customs detention|digital arrest|court notice|court summons|immigration penalty|legal action will be taken|urgent police notice)\b/i
+  },
+  {
+    id: 'da_call_coercion',
+    category: 'Digital Arrest & Call Coercion',
+    severity: 'critical',
+    weight: 35,
+    title: 'Instructions Not to Disconnect or Stay on Video Call',
+    description: 'Coercive orders demanding you remain continuously on a video or voice call, keep your camera on, stay in isolation, or not disconnect.',
+    whyItMatters: 'In digital arrest scams, fraudsters pose as police on video calls and forbid victims from disconnecting to isolate them from help. Real Indian police or courts NEVER place citizens under "digital arrest" or conduct interrogations over WhatsApp/Skype.',
+    pattern: /\b(?:(?:do not|don't)\s+(?:disconnect|cut|end|hang up)\s+(?:the )?(?:call|video call|phone)|(?:stay|remain|connect)\s+(?:on|connected to)\s+(?:the )?(?:video call|call|skype|whatsapp call)|connect on (?:whatsapp )?video call|video call now|keep (?:your )?camera on|virtual (?:custody|interrogation)|digital custody|(?:do not|don't)\s+(?:inform|tell|contact)\s+(?:anyone|family|lawyer|friends)|strict confidentiality under (?:the )?official secrets act)\b/i,
+    extractRegex: /\b(?:(?:do not|don't)\s+(?:disconnect|cut|end|hang up)\s+(?:the )?(?:call|video call|phone)|(?:stay|remain|connect)\s+(?:on|connected to)\s+(?:the )?(?:video call|call|skype|whatsapp call)|connect on (?:whatsapp )?video call|video call now|keep (?:your )?camera on|virtual custody|digital custody|(?:do not|don't)\s+(?:inform|tell|contact)\s+(?:anyone|family|lawyer|friends))\b/i
+  },
+  {
+    id: 'da_avoid_arrest_payment',
+    category: 'Extortion & Payment to Avoid Arrest',
+    severity: 'critical',
+    weight: 35,
+    title: 'Demand for Payment or Deposit to Avoid Arrest',
+    description: 'Demands for money, "security deposits", "bail bonds", or "verification transfers" to avoid arrest, halt a warrant, or clear your name.',
+    whyItMatters: 'Demanding payment to avoid arrest is criminal extortion. Genuine Indian law enforcement and judicial authorities NEVER ask for payments, deposits, or transfers over phone or messaging apps to clear an individual from criminal charges.',
+    pattern: /\b(?:(?:pay|transfer|deposit|send)\b.{0,45}\b(?:to avoid (?:immediate )?arrest|to clear (?:your )?name|security deposit|bail (?:amount|deposit|bond)?|clearance (?:deposit|fee|account)|verification (?:account|fee|deposit)|escrow account|rbi (?:verification|clearance)|avoid legal action)\b|(?:to avoid (?:immediate )?arrest|to clear (?:your )?name|to (?:halt|cancel|stop) (?:the )?warrant)\b.{0,45}\b(?:pay|transfer|deposit|send)\b)\b/i,
+    extractRegex: /\b(?:(?:pay|transfer|deposit|send)\s+[^.,\n]{0,45}\b(?:to avoid (?:immediate )?arrest|to clear (?:your )?name|security deposit|bail|clearance|verification account|escrow account|rbi verification|avoid legal action)|(?:to avoid (?:immediate )?arrest|to clear (?:your )?name|to (?:halt|cancel|stop) (?:the )?warrant)\s+[^.,\n]{0,45}\b(?:pay|transfer|deposit|send))\b/i
+  },
+  {
+    id: 'da_aadhaar_threat',
+    category: 'Identity Implicated in Criminal Offense',
+    severity: 'high',
+    weight: 25,
+    title: 'Aadhaar or Identity Implicated in Criminal Offense',
+    description: 'Claims that your Aadhaar card, PAN, or identity documents are tied to illegal shipments, contraband parcels, narcotics, or money laundering.',
+    whyItMatters: 'Scammers claim illegal contraband or narcotics were seized in a parcel bearing your Aadhaar to induce panic. Legitimate investigative agencies do not notify citizens of criminal investigations via informal text or chat.',
+    pattern: /\b(?:(?:aadhaar|pan card|passport|identity card|sim card|bank account)\b.{0,45}\b(?:linked to|involved in|misused in|found in|registered in|implicated in)\b.{0,40}\b(?:contraband|narcotics|drugs|money laundering|illegal|crime|fraud|terror|smuggling|unauthorized)\b|(?:parcel|consignment|courier|shipment)\b.{0,40}\b(?:linked to|containing|seized with|tagged with)\b.{0,40}\b(?:aadhaar|passport|pan card)\b|(?:aadhaar|pan card)\b.{0,35}\b(?:implicated|blacklisted|frozen by (?:court|police|cbi|ed)|under investigation for crime))\b/i,
+    extractRegex: /\b(?:(?:aadhaar|pan card|passport|identity card|sim card)\s+[^.,\n]{0,45}\b(?:linked to|involved in|misused in|found in|registered in|implicated in)\s+[^.,\n]{0,40}\b(?:contraband|narcotics|drugs|money laundering|illegal|crime|fraud|terror|smuggling)|(?:parcel|consignment|courier|shipment)\s+[^.,\n]{0,40}\b(?:linked to|containing|seized with)\s+[^.,\n]{0,40}\b(?:aadhaar|passport|pan card)|(?:aadhaar|pan card)\s+[^.,\n]{0,35}\b(?:implicated|blacklisted|frozen))\b/i
+  },
+  {
+    id: 'da_gov_impersonation',
+    category: 'Law Enforcement & Agency Impersonation',
+    severity: 'high',
+    weight: 18,
+    title: 'Impersonation of Police, CBI, ED, or Judicial Authority',
+    description: 'Claiming to represent law enforcement, cyber crime cells, customs, or judicial authorities to command trust or induce fear.',
+    whyItMatters: 'Impersonating police, CBI, or customs officers makes coercive demands seem authoritative. Genuine police officers do not conduct interrogations or resolve cases over messaging apps.',
+    pattern: /\b(?:(?:mumbai|delhi|crime branch|cyber|state)\s+police|police department|cbi(?:\s+headquarters)?|central bureau of investigation|enforcement directorate|\bed\s+office|narcotics control bureau|\bncb\b|customs department|cyber crime (?:branch|cell|department|unit)|trai notice|telecom regulatory authority|supreme court of india|high court notice|cyber cell)\b/i,
+    extractRegex: /\b(?:(?:mumbai|delhi|crime branch|cyber|state)\s+police|police department|cbi(?:\s+headquarters)?|central bureau of investigation|enforcement directorate|narcotics control bureau|customs department|cyber crime (?:branch|cell|department|unit)|trai notice|supreme court of india|cyber cell)\b/i
   },
   {
     id: 'suspension_threat',
@@ -413,6 +457,10 @@ export const analyzeMessageLocally = (text) => {
   // 6. Context-Aware Deduplication & Combination Analysis
   const hasCredentialTrap = matchedRuleIds.has('credential_otp_trap') || matchedRuleIds.has('credential_pin_cvv') || matchedRuleIds.has('remote_access_malware');
   const hasCoerciveLegalThreat = matchedRuleIds.has('coercive_threats');
+  const hasCallCoercion = matchedRuleIds.has('da_call_coercion');
+  const hasAvoidArrestPayment = matchedRuleIds.has('da_avoid_arrest_payment');
+  const hasAadhaarThreat = matchedRuleIds.has('da_aadhaar_threat');
+  const hasGovImpersonation = matchedRuleIds.has('da_gov_impersonation');
   const hasLocationHarvest = matchedRuleIds.has('unverified_location_id_harvest');
   const hasSpoofedDomain = matchedRuleIds.has('lookalike_spoofed_domain');
   const hasShortener = matchedRuleIds.has('url_shortener');
@@ -424,6 +472,14 @@ export const analyzeMessageLocally = (text) => {
   const hasSuspensionThreat = matchedRuleIds.has('suspension_threat');
   const hasUnrealisticOffer = matchedRuleIds.has('unrealistic_discount_lottery');
 
+  // Count strong digital arrest indicators
+  const daIndicatorCount =
+    (hasGovImpersonation ? 1 : 0) +
+    (hasAadhaarThreat ? 1 : 0) +
+    (hasCoerciveLegalThreat ? 1 : 0) +
+    (hasAvoidArrestPayment ? 1 : 0) +
+    (hasCallCoercion ? 1 : 0);
+
   // Check if personal UPI is purely benign / isolated (no urgency, no cancellation, no coercion, no bypass, no threats)
   const isIsolatedPersonalUpi =
     hasPersonalPayment &&
@@ -431,6 +487,10 @@ export const analyzeMessageLocally = (text) => {
     !hasUrgencyCountdown &&
     !hasCredentialTrap &&
     !hasCoerciveLegalThreat &&
+    !hasCallCoercion &&
+    !hasAvoidArrestPayment &&
+    !hasAadhaarThreat &&
+    !hasGovImpersonation &&
     !hasLocationHarvest &&
     !hasPlatformBypass &&
     !hasSpoofedDomain &&
@@ -449,6 +509,34 @@ export const analyzeMessageLocally = (text) => {
     }
   }
 
+  // Check if government / police mention is purely informational (no threats, no arrest, no coercion, no payments)
+  const isIsolatedGovImpersonation =
+    hasGovImpersonation &&
+    !hasCoerciveLegalThreat &&
+    !hasCallCoercion &&
+    !hasAvoidArrestPayment &&
+    !hasAadhaarThreat &&
+    !hasPersonalPayment &&
+    !hasUrgencyCountdown &&
+    !hasCredentialTrap &&
+    !hasCancellationThreat &&
+    !hasLocationHarvest &&
+    !hasPlatformBypass &&
+    !hasSpoofedDomain &&
+    !hasShortener &&
+    !hasSuspensionThreat;
+
+  // If isolated government / police agency mention, soften its severity and presentation
+  if (isIsolatedGovImpersonation) {
+    const govWarning = detectedWarnings.find((w) => w.id === 'da_gov_impersonation');
+    if (govWarning) {
+      govWarning.severity = 'low';
+      govWarning.title = 'Official Agency / Police Mentioned (Informational)';
+      govWarning.description = 'A police or government entity was mentioned in an informational context without threats, arrest warrants, call coercion, or payment demands.';
+      govWarning.whyItMatters = 'Official agencies are frequently referenced in safety advisories, campus notices, or routine travel information. Authentic public notices do not threaten arrest or demand money transfers.';
+    }
+  }
+
   // Calculate Base Clustered Scores (Prevents double counting overlapping regex matches)
   let baseScore = 0;
 
@@ -457,9 +545,19 @@ export const analyzeMessageLocally = (text) => {
   if (matchedRuleIds.has('credential_pin_cvv')) baseScore += 35;
   if (matchedRuleIds.has('remote_access_malware')) baseScore += 35;
 
-  // Legal Coercion & Arrest Cluster
+  // Legal Coercion & Digital Arrest Cluster
   if (hasCoerciveLegalThreat) baseScore += 35;
-  if (hasSuspensionThreat && !hasCoerciveLegalThreat) baseScore += 20;
+  if (hasCallCoercion) baseScore += 35;
+  if (hasAvoidArrestPayment) baseScore += 35;
+  if (hasAadhaarThreat) baseScore += 25;
+  if (hasSuspensionThreat && !hasCoerciveLegalThreat && !hasAadhaarThreat) baseScore += 20;
+
+  // Law Enforcement Agency Impersonation Cluster
+  if (isIsolatedGovImpersonation) {
+    baseScore += 0; // Purely informational reference to police / government agency
+  } else if (hasGovImpersonation) {
+    baseScore += 18;
+  }
 
   // Physical Location & Privacy Cluster
   if (hasLocationHarvest) baseScore += 30;
@@ -508,13 +606,22 @@ export const analyzeMessageLocally = (text) => {
     compoundMultiplier += 18;
   }
 
-  // Credential trap + Urgent deadline or Spoofed domain
-  if (hasCredentialTrap && (hasUrgencyCountdown || hasCancellationThreat || hasSpoofedDomain || hasShortener)) {
+  // Credential trap + Urgent deadline, Spoofed domain, or Suspension threat
+  if (hasCredentialTrap && (hasUrgencyCountdown || hasCancellationThreat || hasSuspensionThreat || hasSpoofedDomain || hasShortener)) {
     compoundMultiplier += 20;
   }
 
-  // Legal coercion / Digital arrest + Payment demand
-  if (hasCoerciveLegalThreat && (hasPersonalPayment || hasUrgencyCountdown)) {
+  // Digital Arrest Multi-indicator Combination
+  // Detects combinations of police impersonation, Aadhaar threats, arrest threats, avoid-arrest payments, and call coercion
+  const isDigitalArrestScam =
+    (hasAvoidArrestPayment && (hasCoerciveLegalThreat || hasGovImpersonation || hasAadhaarThreat)) ||
+    (hasCallCoercion && (hasCoerciveLegalThreat || hasGovImpersonation || hasAadhaarThreat || hasAvoidArrestPayment)) ||
+    (hasCoerciveLegalThreat && (hasAvoidArrestPayment || hasPersonalPayment || (hasGovImpersonation && hasAadhaarThreat))) ||
+    (daIndicatorCount >= 2 && (hasCoerciveLegalThreat || hasAvoidArrestPayment || hasCallCoercion || hasAadhaarThreat));
+
+  if (isDigitalArrestScam) {
+    compoundMultiplier += daIndicatorCount >= 3 ? 30 : 25;
+  } else if (hasCoerciveLegalThreat && (hasPersonalPayment || hasUrgencyCountdown)) {
     compoundMultiplier += 25;
   }
 
@@ -536,11 +643,19 @@ export const analyzeMessageLocally = (text) => {
   if (riskScore >= 80) {
     riskLevel = 'Critical';
     riskBadgeVariant = 'alert';
-    summary = 'Critical Risk: High-Threat Travel Scam Signatures Detected. This communication exhibits severe threat patterns such as credential harvesting, legal extortion, remote-access software traps, or coercive demands. Do not share codes, do not click links, do not transfer funds, and do not disclose your live location.';
+    if (isDigitalArrestScam) {
+      summary = 'Critical Threat: Digital Arrest & Law Enforcement Extortion Signature. This message exhibits severe digital arrest extortion tactics, combining police/government impersonation, arrest threats, Aadhaar contraband allegations, call coercion, or demands for payments to avoid arrest. Real Indian police and agencies NEVER place citizens under "digital arrest", conduct video interrogations, or ask for money transfers. Disconnect immediately and call 1930 or 112.';
+    } else {
+      summary = 'Critical Risk: High-Threat Travel Scam Signatures Detected. This communication exhibits severe threat patterns such as credential harvesting, legal extortion, remote-access software traps, or coercive demands. Do not share codes, do not click links, do not transfer funds, and do not disclose your live location.';
+    }
   } else if (riskScore >= 51) {
     riskLevel = 'High';
     riskBadgeVariant = 'terracotta';
-    summary = 'High Risk: Coercive Travel Fraud Indicators Detected. This message combines suspicious patterns such as urgent booking cancellation threats with personal payment demands, off-platform booking diversion, or unverified driver location demands. Do not send money without direct verification through official booking records.';
+    if (isDigitalArrestScam) {
+      summary = 'High Risk: Digital Arrest & Legal Intimidation Warning. Warning signs of law enforcement impersonation, arrest threats, or coercive demands were detected. Real police and government agencies never demand payment or issue arrest threats over messaging apps. Do not comply and verify independently by calling 112 or 1930.';
+    } else {
+      summary = 'High Risk: Coercive Travel Fraud Indicators Detected. This message combines suspicious patterns such as urgent booking cancellation threats with personal payment demands, off-platform booking diversion, or unverified driver location demands. Do not send money without direct verification through official booking records.';
+    }
   } else if (riskScore >= 21) {
     riskLevel = 'Medium';
     riskBadgeVariant = 'outline';
@@ -548,7 +663,9 @@ export const analyzeMessageLocally = (text) => {
   } else {
     riskLevel = 'Low';
     riskBadgeVariant = 'sage';
-    if (isIsolatedPersonalUpi) {
+    if (isIsolatedGovImpersonation) {
+      summary = 'Low Risk: Informational Agency Mention. An official agency or police entity was mentioned in an informational context with no threats, countdowns, call coercion, or payment demands. Routine vigilance is advised.';
+    } else if (isIsolatedPersonalUpi) {
       summary = 'Low Risk: Informational Payment Mention. A personal UPI handle was mentioned without urgent cancellation demands or deceptive pressure. Authentic Indian homestays commonly share UPI IDs, but always ensure you verify the recipient before making any payment.';
     } else {
       summary = 'Low Risk: No Common Travel Threat Patterns Identified. The message does not trigger heuristic fraud indicators such as OTP harvesting, urgent countdowns, or unverified payment extortion. Routine travel vigilance is advised.';
@@ -570,7 +687,10 @@ export const analyzeMessageLocally = (text) => {
     recommendedSteps.push('Do NOT transfer money to personal UPI handles or private QR codes under cancellation pressure. Settle payments in person at check-in or via registered merchant gateways.');
   }
 
-  if (hasCoerciveLegalThreat) {
+  if (hasCallCoercion || hasAvoidArrestPayment || (hasCoerciveLegalThreat && (hasGovImpersonation || hasAadhaarThreat))) {
+    recommendedSteps.push('DISCONNECT IMMEDIATELY: "Digital arrest" is a recognized cyber extortion scam. Genuine Indian police, CBI, ED, customs, and courts NEVER place citizens under "digital arrest", conduct video-call trials, or demand money to avoid arrest.');
+    recommendedSteps.push('Do NOT transfer any money, "security deposit", or "bail bond". Report the caller and phone number immediately to the National Cyber Crime Portal at 1930 or cybercrime.gov.in.');
+  } else if (hasCoerciveLegalThreat) {
     recommendedSteps.push('Do not panic over threats of arrest, police warrants, or airport customs detention. Genuine Indian law enforcement officers never demand money transfers via UPI or conduct interrogations over WhatsApp video calls.');
   }
 

@@ -18,7 +18,11 @@ import {
   BedIcon,
   ExternalLinkIcon,
   RefreshCwIcon,
-  CheckIcon
+  CheckIcon,
+  MoonIcon,
+  CompassIcon,
+  ArrowRightIcon,
+  LockIcon
 } from '../components/common/Icons';
 
 import {
@@ -27,8 +31,11 @@ import {
   AVAILABLE_SEARCH_RADII,
   geocodeLocation,
   reverseGeocode,
-  fetchLiveSafeHavens
+  fetchLiveSafeHavens,
+  getCachedSafeHavens
 } from '../services/safeHavensService';
+
+import { getActivePlan } from '../services/storage';
 
 // Default initial map viewpoint: Bengaluru Central
 const DEFAULT_CENTER = {
@@ -37,12 +44,82 @@ const DEFAULT_CENTER = {
   label: 'Bengaluru (Central), Karnataka'
 };
 
+// Situation-Based Emergency Shortcuts definitions
+export const SITUATION_PRESETS = [
+  {
+    id: 'unsafe',
+    label: 'Need Police / Feeling Unsafe',
+    category: 'police',
+    icon: ShieldIcon,
+    activeClass: 'active-unsafe',
+    filter247: false,
+    filterWomen: false,
+    helplines: [
+      { number: '112', name: 'Police / Emergency' },
+      { number: '1091', name: 'Women Helpline' }
+    ],
+    advisory:
+      'Showing nearby police stations and Mahila helpdesks. For immediate physical pursuit or danger, dial 112 or 1091 directly. OpenStreetMap records physical facility presence and does not guarantee live staffing on site.'
+  },
+  {
+    id: 'medical',
+    label: 'Medical Emergency',
+    category: 'medical',
+    icon: HospitalIcon,
+    activeClass: 'active-medical',
+    filter247: false,
+    filterWomen: false,
+    helplines: [
+      { number: '108', name: 'Ambulance' },
+      { number: '112', name: 'Emergency' }
+    ],
+    advisory:
+      'Showing hospitals, clinics, and pharmacies. For urgent ambulance dispatch, call 108 immediately. Facilities without confirmed 24/7 records may have closed entrance gates.'
+  },
+  {
+    id: 'night',
+    label: 'Stranded at Night',
+    category: 'all',
+    icon: MoonIcon,
+    activeClass: 'active-night',
+    filter247: true,
+    filterWomen: false,
+    helplines: [
+      { number: '112', name: 'Police' },
+      { number: '139', name: 'Railway Security' }
+    ],
+    advisory:
+      'Filtered for facilities with confirmed 24/7 hours (major 24-hour transit stations, police stations, and 24-hour reception accommodations). Physical records do not guarantee open gates.'
+  },
+  {
+    id: 'transit',
+    label: 'Transit Disrupted',
+    category: 'railway',
+    icon: TrainIcon,
+    activeClass: 'active-transit',
+    filter247: false,
+    filterWomen: false,
+    helplines: [
+      { number: '139', name: 'Railway Security' },
+      { number: '1363', name: 'Tourist Helpline' }
+    ],
+    advisory:
+      'Showing railway stations and transit hubs. Call 139 for train security or 1363 for traveller transit assistance.'
+  }
+];
+
 export const AssistanceMap = () => {
   const [searchInput, setSearchInput] = useState('');
   const [currentLocationName, setCurrentLocationName] = useState(DEFAULT_CENTER.label);
   const [activeCategory, setActiveCategory] = useState('all');
   const [facilities, setFacilities] = useState([]);
   const [selectedFacilityId, setSelectedFacilityId] = useState(null);
+
+  // Active Situation Preset state: null | 'unsafe' | 'medical' | 'night' | 'transit'
+  const [activeSituation, setActiveSituation] = useState(null);
+
+  // Active Trip Plan retrieved from storage
+  const [activePlan, setActivePlan] = useState(null);
 
   // Search Radius and Quick Filter states
   const [searchRadius, setSearchRadius] = useState(6000); // 6 km default (preserves existing behaviour)
@@ -59,6 +136,11 @@ export const AssistanceMap = () => {
   const [hasSearched, setHasSearched] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
 
+  // Network connectivity and offline recovery state
+  const [isOnline, setIsOnline] = useState(() => (typeof navigator !== 'undefined' ? navigator.onLine : true));
+  const [justReconnected, setJustReconnected] = useState(false);
+  const [tileErrorOccurred, setTileErrorOccurred] = useState(false);
+
   // Monotonically increasing request sequence counter to prevent race conditions
   const activeRequestIdRef = useRef(0);
 
@@ -70,6 +152,36 @@ export const AssistanceMap = () => {
   const markerMapRef = useRef(new Map());
   const cardListRef = useRef(null);
   const facilityCardsRef = useRef({});
+
+  // ---------------------------------------------------------------------------
+  // Online / Offline Connectivity Event Listeners
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      setJustReconnected(true);
+      setTileErrorOccurred(false);
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.invalidateSize();
+      }
+    };
+
+    const handleOffline = () => {
+      setIsOnline(false);
+      setJustReconnected(false);
+      setErrorMessage(
+        "You're currently offline. Live Safe Havens searches require an internet connection. Your saved emergency information remains available in Safety Vault."
+      );
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   // ---------------------------------------------------------------------------
   // Leaflet Map Initialization, Stability & Cleanup
@@ -86,10 +198,16 @@ export const AssistanceMap = () => {
       });
 
       // Standard OpenStreetMap Tiles with required attribution
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors',
         maxZoom: 19
-      }).addTo(map);
+      });
+
+      tileLayer.on('tileerror', () => {
+        setTileErrorOccurred(true);
+      });
+
+      tileLayer.addTo(map);
 
       const markersGroup = L.layerGroup().addTo(map);
       markersGroupRef.current = markersGroup;
@@ -134,10 +252,33 @@ export const AssistanceMap = () => {
   }, []);
 
   // ---------------------------------------------------------------------------
-  // Initial Load: Fetch safe havens for default city
+  // Initial Load: Fetch safe havens for default city & Retrieve Active Trip Plan
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    loadHavensForCoordinates(DEFAULT_CENTER.lat, DEFAULT_CENTER.lon, DEFAULT_CENTER.label, 'all', null, 6000);
+    const cached = getCachedSafeHavens(DEFAULT_CENTER.lat, DEFAULT_CENTER.lon, 'all', 6000);
+    if (cached) {
+      loadHavensForCoordinates(DEFAULT_CENTER.lat, DEFAULT_CENTER.lon, DEFAULT_CENTER.label, 'all', null, 6000);
+    } else if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setIsOnline(false);
+      setErrorMessage(
+        "You're currently offline. Live Safe Havens searches require an internet connection. Your saved emergency information remains available in Safety Vault."
+      );
+      setHasSearched(true);
+    } else {
+      loadHavensForCoordinates(DEFAULT_CENTER.lat, DEFAULT_CENTER.lon, DEFAULT_CENTER.label, 'all', null, 6000);
+    }
+
+    // Read active travel plan destination from Safety Vault if present
+    try {
+      const plan = getActivePlan();
+      if (plan && plan.destination && plan.destination.trim()) {
+        setActivePlan(plan);
+      } else {
+        setActivePlan(null);
+      }
+    } catch (e) {
+      console.warn('Could not read active travel plan from storage:', e);
+    }
   }, []);
 
   // ---------------------------------------------------------------------------
@@ -196,10 +337,28 @@ export const AssistanceMap = () => {
       if (currentReqId !== activeRequestIdRef.current) return;
 
       setFacilities(result.facilities || []);
+      setErrorMessage(null);
+      setIsOnline(true);
     } catch (err) {
       if (currentReqId !== activeRequestIdRef.current) return;
-      setErrorMessage(err.message || 'Unable to retrieve facilities for this location.');
-      setFacilities([]);
+      const isOff =
+        (typeof navigator !== 'undefined' && !navigator.onLine) ||
+        err.isOffline ||
+        err.code === 'OFFLINE' ||
+        err.message?.includes('offline') ||
+        err.message?.includes('Failed to fetch') ||
+        err.message?.includes('NetworkError');
+
+      if (isOff) {
+        setIsOnline(false);
+        setErrorMessage(
+          "You're currently offline. Live Safe Havens searches require an internet connection. Your saved emergency information remains available in Safety Vault."
+        );
+      } else {
+        setErrorMessage(err.message || 'Unable to retrieve facilities for this location.');
+      }
+      // Requirement 3: Preserve any already-loaded facility information where safe and practical.
+      // Do not erase valid cached data merely because a request fails.
     } finally {
       if (currentReqId === activeRequestIdRef.current) {
         setIsLoading(false);
@@ -209,12 +368,73 @@ export const AssistanceMap = () => {
   };
 
   // ---------------------------------------------------------------------------
+  // Situation-Based Emergency Quick-Action Preset Toggler
+  // ---------------------------------------------------------------------------
+  const handleToggleSituation = (situationId) => {
+    if (activeSituation === situationId) {
+      // Toggle off preset and restore all categories
+      setActiveSituation(null);
+      setFilter24x7(false);
+      setFilterWomenDesk(false);
+      setActiveCategory('all');
+      setSelectedFacilityId(null);
+      loadHavensForCoordinates(centerCoords.lat, centerCoords.lon, currentLocationName, 'all', null, searchRadius);
+    } else {
+      const preset = SITUATION_PRESETS.find((s) => s.id === situationId);
+      if (!preset) return;
+      setActiveSituation(situationId);
+      setFilter24x7(preset.filter247);
+      setFilterWomenDesk(preset.filterWomen);
+      setActiveCategory(preset.category);
+      setSelectedFacilityId(null);
+      loadHavensForCoordinates(centerCoords.lat, centerCoords.lon, currentLocationName, preset.category, null, searchRadius);
+    }
+  };
+
+  // ---------------------------------------------------------------------------
   // Category Filter Pill Click
   // ---------------------------------------------------------------------------
   const handleCategoryChange = (newCatId) => {
     setActiveCategory(newCatId);
+    if (activeSituation) setActiveSituation(null);
     setSelectedFacilityId(null);
     loadHavensForCoordinates(centerCoords.lat, centerCoords.lon, currentLocationName, newCatId, null, searchRadius);
+  };
+
+  // ---------------------------------------------------------------------------
+  // Search Destination Shortcut from Active Trip Plan
+  // ---------------------------------------------------------------------------
+  const handleSearchDestination = async (destQuery) => {
+    if (!destQuery || !destQuery.trim()) return;
+    setSearchInput(destQuery.trim());
+    const currentReqId = ++activeRequestIdRef.current;
+
+    setIsLoading(true);
+    setLoadingMessage(`Locating trip destination "${destQuery.trim()}" in India...`);
+    setErrorMessage(null);
+
+    try {
+      const geocoded = await geocodeLocation(destQuery.trim());
+      if (currentReqId !== activeRequestIdRef.current) return;
+
+      const bestMatch = geocoded[0];
+      const cleanLabel = bestMatch.displayName.split(',').slice(0, 3).join(', ').trim();
+
+      setCurrentLocationName(cleanLabel);
+      setCenterCoords({ lat: bestMatch.lat, lon: bestMatch.lon });
+
+      if (mapInstanceRef.current) {
+        const zoomLevel = searchRadius <= 2500 ? 15 : searchRadius >= 10000 ? 13 : 14;
+        mapInstanceRef.current.setView([bestMatch.lat, bestMatch.lon], zoomLevel, { animate: true });
+      }
+
+      await loadHavensForCoordinates(bestMatch.lat, bestMatch.lon, cleanLabel, activeCategory, currentReqId, searchRadius);
+    } catch (err) {
+      if (currentReqId !== activeRequestIdRef.current) return;
+      setErrorMessage(`Could not locate trip destination "${destQuery}". Please check the spelling or search manually.`);
+      setIsLoading(false);
+      setLoadingMessage('');
+    }
   };
 
   // ---------------------------------------------------------------------------
@@ -465,11 +685,32 @@ export const AssistanceMap = () => {
               ? '#183D32'
               : '#575D57'
           }; margin-bottom: 0.25rem;">
-            ${facility.subcategory} ${facility.is24_7 ? '&bull; 24/7' : ''} ${facility.isWomenDesk ? '&bull; Mahila Desk' : ''}
+            ${facility.subcategory} ${facility.isWomenDesk ? '&bull; Mahila Desk' : ''}
           </div>
           <strong style="font-size: 0.92rem; color: #183D32; display: block; line-height: 1.25; margin-bottom: 0.35rem;">
             ${facility.name}
           </strong>
+
+          <!-- Facility Quality Indicators -->
+          <div style="display: flex; gap: 0.35rem; flex-wrap: wrap; margin-bottom: 0.45rem;">
+            <span style="font-size: 0.64rem; padding: 0.12rem 0.4rem; border-radius: 4px; ${
+              facility.phone
+                ? 'background-color: rgba(82, 110, 89, 0.15); color: #183D32; font-weight: 600;'
+                : 'background-color: #F7F5EF; color: #575D57; border: 1px solid #EFECE1;'
+            }">
+              ${facility.phone ? 'Phone Listed in OSM' : 'Phone Unlisted in OSM'}
+            </span>
+            <span style="font-size: 0.64rem; padding: 0.12rem 0.4rem; border-radius: 4px; ${
+              facility.is24_7
+                ? 'background-color: #DEF7EC; color: #03543F; font-weight: 700;'
+                : facility.hasOpeningHours
+                ? 'background-color: #F7F5EF; color: #183D32; border: 1px solid #EFECE1;'
+                : 'background-color: #F7F5EF; color: #575D57; border: 1px solid #EFECE1;'
+            }">
+              ${facility.is24_7 ? '24/7 Confirmed' : facility.hasOpeningHours ? `Hours: ${facility.openingHours}` : 'Hours Unconfirmed'}
+            </span>
+          </div>
+
           ${
             facility.address
               ? `<p style="font-size: 0.76rem; color: #575D57; margin-bottom: 0.45rem;">${facility.address}</p>`
@@ -479,7 +720,7 @@ export const AssistanceMap = () => {
             ${
               facility.phone
                 ? `<a href="tel:${facility.phone}" style="color: #183D32; font-weight: 600; text-decoration: underline;">Call: ${facility.phone}</a>`
-                : `<span style="color: #575D57; font-size: 0.7rem;">Phone unlisted &bull; </span><a href="tel:${emergencyHelpline.number}" style="color: #C9785B; font-weight: 700; text-decoration: underline;">Call ${emergencyHelpline.label}</a>`
+                : `<span style="color: #575D57; font-size: 0.7rem;">Phone unlisted in OSM &bull; </span><a href="tel:${emergencyHelpline.number}" style="color: #C9785B; font-weight: 700; text-decoration: underline;">Call ${emergencyHelpline.label}</a>`
             }
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem; padding-top: 0.4rem; border-top: 1px solid #EFECE1;">
@@ -489,6 +730,9 @@ export const AssistanceMap = () => {
             <a href="${facility.directionsUrl}" target="_blank" rel="noopener noreferrer" style="font-size: 0.72rem; font-weight: 700; color: #C9785B; text-decoration: underline;">
               Get Directions &rarr;
             </a>
+          </div>
+          <div style="font-size: 0.62rem; color: #8C938C; margin-top: 0.35rem; font-style: italic;">
+            * Physical record from OSM; presence does not guarantee live staffing.
           </div>
         </div>
       `;
@@ -552,6 +796,151 @@ export const AssistanceMap = () => {
           across India using live OpenStreetMap data.
         </p>
       </div>
+
+      {/* Offline Status & Recovery Banner */}
+      {!isOnline && (
+        <div className="safe-havens-offline-banner" role="alert">
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
+            <div style={{ color: '#B45309', flexShrink: 0, marginTop: '2px' }}>
+              <AlertIcon size={22} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.35rem' }}>
+                <strong style={{ fontSize: 'var(--text-sm)', color: '#92400E', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Offline Mode Active
+                </strong>
+                <Badge variant="outline">No Internet Connection</Badge>
+              </div>
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-charcoal)', margin: 0, lineHeight: 1.55 }}>
+                You&apos;re currently offline. Live Safe Havens searches require an internet connection. Your saved emergency information remains available in Safety Vault.
+              </p>
+            </div>
+          </div>
+
+          {/* Offline Actions & Safety Vault Navigation */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '0.75rem',
+              paddingTop: '0.65rem',
+              borderTop: '1px solid rgba(180, 83, 9, 0.2)'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <a
+                href="#/vault"
+                className="btn btn-primary btn-sm"
+                style={{ textDecoration: 'none' }}
+              >
+                <LockIcon size={14} />
+                <span>Open Offline Safety Vault</span>
+              </a>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (typeof navigator !== 'undefined' && navigator.onLine) {
+                    setIsOnline(true);
+                    setJustReconnected(true);
+                    loadHavensForCoordinates(centerCoords.lat, centerCoords.lon, currentLocationName, activeCategory, null, searchRadius);
+                  } else {
+                    setErrorMessage("You're currently offline. Live Safe Havens searches require an internet connection. Your saved emergency information remains available in Safety Vault.");
+                  }
+                }}
+                className="btn btn-secondary btn-sm"
+              >
+                <RefreshCwIcon size={14} />
+                <span>Check Connection &amp; Retry</span>
+              </button>
+            </div>
+
+            <span style={{ fontSize: 'var(--text-2xs)', color: 'var(--color-charcoal-muted)', fontStyle: 'italic' }}>
+              Emergency calls are placed through your mobile carrier. Services are never dialed automatically.
+            </span>
+          </div>
+
+          {/* Direct Emergency Helplines (Carrier-based phone dialer) */}
+          <div
+            style={{
+              padding: '0.5rem 0.75rem',
+              backgroundColor: '#FFFFFF',
+              borderRadius: 'var(--radius-sm)',
+              border: '1px solid rgba(180, 83, 9, 0.25)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              flexWrap: 'wrap'
+            }}
+          >
+            <span style={{ fontSize: 'var(--text-2xs)', fontWeight: 700, color: 'var(--color-forest)', textTransform: 'uppercase' }}>
+              Direct Indian Helplines:
+            </span>
+            <a href="tel:112" className="emergency-helpline-link" title="National Emergency Helpline">
+              <PhoneIcon size={11} />
+              <span>Police / Emergency: 112</span>
+            </a>
+            <a href="tel:1091" className="emergency-helpline-link" title="24/7 Women Helpline">
+              <PhoneIcon size={11} />
+              <span>Women Helpline: 1091</span>
+            </a>
+            <a href="tel:108" className="emergency-helpline-link" title="National Ambulance Service">
+              <PhoneIcon size={11} />
+              <span>Ambulance: 108</span>
+            </a>
+            <a href="tel:139" className="emergency-helpline-link" title="Railway Security Helpline">
+              <PhoneIcon size={11} />
+              <span>Railways: 139</span>
+            </a>
+          </div>
+        </div>
+      )}
+
+      {/* Connection Restored Notice */}
+      {isOnline && justReconnected && (
+        <div className="safe-havens-reconnected-banner" role="status">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div style={{ color: 'var(--color-forest)' }}>
+              <CheckIcon size={18} />
+            </div>
+            <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--color-forest)' }}>
+              Internet connection restored. Live OpenStreetMap facility queries are available.
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <button
+              type="button"
+              onClick={() => {
+                setJustReconnected(false);
+                loadHavensForCoordinates(
+                  centerCoords.lat,
+                  centerCoords.lon,
+                  currentLocationName,
+                  activeCategory,
+                  null,
+                  searchRadius
+                );
+              }}
+              className="btn btn-primary btn-sm"
+            >
+              <RefreshCwIcon size={13} />
+              <span>Retry Search Now</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setJustReconnected(false)}
+              className="btn btn-ghost btn-sm"
+              style={{ fontSize: 'var(--text-xs)', padding: '0.25rem 0.5rem' }}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Emergency Hotline Advisory Card */}
       <div
@@ -717,6 +1106,49 @@ export const AssistanceMap = () => {
             </button>
           ))}
         </div>
+
+        {/* Active Trip Destination Shortcut (from Exit Plans) */}
+        {activePlan && activePlan.destination && (
+          <div
+            style={{
+              marginTop: '0.85rem',
+              padding: '0.65rem 0.85rem',
+              backgroundColor: 'rgba(82, 110, 89, 0.08)',
+              borderRadius: 'var(--radius-sm)',
+              border: '1px solid rgba(82, 110, 89, 0.22)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '0.5rem',
+              flexWrap: 'wrap'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div style={{ color: 'var(--color-forest)', display: 'flex' }}>
+                <CompassIcon size={16} />
+              </div>
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-forest)', fontWeight: 600 }}>
+                Active Trip Itinerary Destination: <strong>{activePlan.destination}</strong>
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleSearchDestination(activePlan.destination)}
+              disabled={isLoading}
+              className="btn btn-secondary btn-sm"
+              style={{
+                padding: '0.25rem 0.65rem',
+                fontSize: 'var(--text-2xs)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.35rem'
+              }}
+            >
+              <span>Search Havens in {activePlan.destination}</span>
+              <ArrowRightIcon size={12} />
+            </button>
+          </div>
+        )}
       </Card>
 
       {/* Geolocation Permission Error Banner */}
@@ -739,6 +1171,154 @@ export const AssistanceMap = () => {
           <span>{permissionError}</span>
         </div>
       )}
+
+      {/* 1. Situation-Based Emergency Shortcuts Bar */}
+      <div style={{ marginBottom: 'var(--space-4)' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: '0.45rem',
+            flexWrap: 'wrap',
+            gap: '0.4rem'
+          }}
+        >
+          <span
+            style={{
+              fontSize: 'var(--text-xs)',
+              fontWeight: 700,
+              color: 'var(--color-forest)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em'
+            }}
+          >
+            Emergency Situation Shortcuts:
+          </span>
+          {activeSituation && (
+            <button
+              type="button"
+              onClick={() => handleToggleSituation(activeSituation)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--color-charcoal-muted)',
+                fontSize: 'var(--text-2xs)',
+                cursor: 'pointer',
+                textDecoration: 'underline',
+                padding: 0
+              }}
+            >
+              Reset to Standard Browsing
+            </button>
+          )}
+        </div>
+
+        <div className="situation-shortcuts-bar">
+          {SITUATION_PRESETS.map((sit) => {
+            const isSelected = activeSituation === sit.id;
+            const Icon = sit.icon;
+            return (
+              <button
+                key={sit.id}
+                type="button"
+                onClick={() => handleToggleSituation(sit.id)}
+                className={`situation-action-btn ${isSelected ? sit.activeClass : ''}`}
+                aria-pressed={isSelected}
+              >
+                <Icon size={14} />
+                <span>{sit.label}</span>
+                {isSelected && <CheckIcon size={12} />}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Active Situation Guidance Banner */}
+        {activeSituation && (() => {
+          const preset = SITUATION_PRESETS.find((s) => s.id === activeSituation);
+          if (!preset) return null;
+
+          return (
+            <div
+              style={{
+                padding: '0.85rem 1rem',
+                backgroundColor:
+                  activeSituation === 'unsafe'
+                    ? 'var(--color-alert-bg)'
+                    : activeSituation === 'medical'
+                    ? '#FEF3C7'
+                    : activeSituation === 'night'
+                    ? '#F1F5F9'
+                    : '#EEF2FF',
+                border: `1px solid ${
+                  activeSituation === 'unsafe'
+                    ? 'var(--border-accent)'
+                    : activeSituation === 'medical'
+                    ? '#FCD34D'
+                    : activeSituation === 'night'
+                    ? '#CBD5E1'
+                    : '#C7D2FE'
+                }`,
+                borderRadius: 'var(--radius-sm)',
+                marginBottom: 'var(--space-4)'
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '0.5rem',
+                  marginBottom: '0.45rem'
+                }}
+              >
+                <strong
+                  style={{
+                    fontSize: 'var(--text-xs)',
+                    color:
+                      activeSituation === 'unsafe'
+                        ? 'var(--color-terracotta-dark)'
+                        : activeSituation === 'medical'
+                        ? '#92400E'
+                        : activeSituation === 'night'
+                        ? '#0F172A'
+                        : '#3730A3',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em'
+                  }}
+                >
+                  Active Emergency Protocol: {preset.label}
+                </strong>
+                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                  {preset.helplines.map((hl) => (
+                    <a
+                      key={hl.number}
+                      href={`tel:${hl.number}`}
+                      className="emergency-helpline-link"
+                      style={{ fontSize: 'var(--text-2xs)' }}
+                    >
+                      <PhoneIcon size={11} />
+                      <span>Call {hl.name}: {hl.number}</span>
+                    </a>
+                  ))}
+                </div>
+              </div>
+              <p
+                style={{
+                  fontSize: 'var(--text-xs)',
+                  margin: 0,
+                  color: 'var(--color-charcoal)',
+                  lineHeight: 1.45
+                }}
+              >
+                {preset.advisory}
+              </p>
+            </div>
+          );
+        })()}
+      </div>
 
       {/* Category Filter Pills */}
       <div
@@ -947,8 +1527,16 @@ export const AssistanceMap = () => {
               </div>
             )}
 
-            {/* Leaflet DOM Anchor */}
-            <div ref={mapContainerRef} className="leaflet-map-root" />
+            {/* Leaflet DOM Anchor with Floating Map Offline Badge */}
+            <div style={{ position: 'relative' }}>
+              {(!isOnline || tileErrorOccurred) && (
+                <div className="map-offline-badge" role="status">
+                  <InfoIcon size={13} />
+                  <span>Map tiles unavailable offline. Pins &amp; coordinates remain accessible.</span>
+                </div>
+              )}
+              <div ref={mapContainerRef} className="leaflet-map-root" />
+            </div>
 
             {/* Map Card Footer / Attribution */}
             <div
@@ -973,30 +1561,34 @@ export const AssistanceMap = () => {
 
         {/* Right Column: Scrollable Facility Cards List */}
         <div ref={cardListRef}>
-          {/* Error State */}
+          {/* Error / Offline State */}
           {errorMessage && (
             <Card
               variant="default"
               style={{
-                borderColor: 'var(--color-terracotta)',
-                backgroundColor: 'var(--color-alert-bg)',
+                borderColor: !isOnline || errorMessage.includes('offline') ? '#B45309' : 'var(--color-terracotta)',
+                backgroundColor: !isOnline || errorMessage.includes('offline') ? '#FEF3C7' : 'var(--color-alert-bg)',
                 padding: 'var(--space-6)',
                 marginBottom: 'var(--space-4)'
               }}
             >
               <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
-                <div style={{ color: 'var(--color-terracotta)' }}>
+                <div style={{ color: !isOnline || errorMessage.includes('offline') ? '#B45309' : 'var(--color-terracotta)' }}>
                   <AlertIcon size={20} />
                 </div>
                 <div>
-                  <h3 style={{ fontSize: 'var(--text-base)', color: 'var(--color-terracotta-dark)', marginBottom: '0.35rem' }}>
-                    Live Facility Query Failed
+                  <h3 style={{ fontSize: 'var(--text-base)', color: !isOnline || errorMessage.includes('offline') ? '#92400E' : 'var(--color-terracotta-dark)', marginBottom: '0.35rem' }}>
+                    {!isOnline || errorMessage.includes('offline')
+                      ? 'Offline: Live Facility Query Paused'
+                      : 'Live Facility Query Failed (Overpass API Server)'}
                   </h3>
                   <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-charcoal)', lineHeight: 1.5, marginBottom: '0.65rem' }}>
                     {errorMessage}
                   </p>
                   <p style={{ fontSize: 'var(--text-2xs)', color: 'var(--color-charcoal-muted)', marginBottom: '0.75rem', lineHeight: 1.5 }}>
-                    <strong>Important:</strong> An API connectivity failure does <em>not</em> mean no facilities exist in {currentLocationName}. Public OpenStreetMap community servers may be temporarily busy. Your map above has recentred to your searched coordinates. You can retry the query or call the verified emergency numbers below immediately.
+                    {!isOnline || errorMessage.includes('offline')
+                      ? 'Your device is disconnected from the internet. Emergency hotlines and your saved offline Safety Vault records remain fully accessible below.'
+                      : `Important: An API connectivity failure does not mean no facilities exist in ${currentLocationName}. Public OpenStreetMap community servers may be temporarily busy. Your map above has recentred to your searched coordinates. You can retry the query or call the verified emergency numbers below immediately.`}
                   </p>
 
                   {/* Immediate Emergency Helplines Available During Outage */}
@@ -1017,13 +1609,13 @@ export const AssistanceMap = () => {
                         <PhoneIcon size={12} />
                         <span>Police & Emergency: Call 112</span>
                       </a>
-                      <a href="tel:108" className="emergency-helpline-link" title="Ambulance & Medical Emergency">
-                        <PhoneIcon size={12} />
-                        <span>Ambulance: Call 108</span>
-                      </a>
                       <a href="tel:1091" className="emergency-helpline-link" title="Women Helpline">
                         <PhoneIcon size={12} />
                         <span>Women Helpline: Call 1091</span>
+                      </a>
+                      <a href="tel:108" className="emergency-helpline-link" title="Ambulance & Medical Emergency">
+                        <PhoneIcon size={12} />
+                        <span>Ambulance: Call 108</span>
                       </a>
                       <a href="tel:139" className="emergency-helpline-link" title="Railway Security Helpline">
                         <PhoneIcon size={12} />
@@ -1033,39 +1625,98 @@ export const AssistanceMap = () => {
                   </div>
 
                   <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    <button
-                      onClick={() =>
-                        loadHavensForCoordinates(
-                          centerCoords.lat,
-                          centerCoords.lon,
-                          currentLocationName,
-                          activeCategory,
-                          null,
-                          searchRadius
-                        )
-                      }
-                      className="btn btn-primary btn-sm"
-                    >
-                      <RefreshCwIcon size={14} />
-                      <span>Retry Live Query</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setSearchInput('Kempegowda Bus Station, Majestic, Bengaluru');
-                        loadHavensForCoordinates(12.9767, 77.5713, 'Bengaluru (Majestic)', activeCategory, null, searchRadius);
-                      }}
-                      className="btn btn-secondary btn-sm"
-                    >
-                      <span>Try Bengaluru Central</span>
-                    </button>
+                    {!isOnline || errorMessage.includes('offline') ? (
+                      <>
+                        <a
+                          href="#/vault"
+                          className="btn btn-primary btn-sm"
+                          style={{ textDecoration: 'none' }}
+                        >
+                          <LockIcon size={14} />
+                          <span>Open Offline Safety Vault</span>
+                        </a>
+
+                        <button
+                          onClick={() => {
+                            if (typeof navigator !== 'undefined' && navigator.onLine) {
+                              setIsOnline(true);
+                              setJustReconnected(true);
+                              loadHavensForCoordinates(
+                                centerCoords.lat,
+                                centerCoords.lon,
+                                currentLocationName,
+                                activeCategory,
+                                null,
+                                searchRadius
+                              );
+                            } else {
+                              setErrorMessage(
+                                "You're currently offline. Live Safe Havens searches require an internet connection. Your saved emergency information remains available in Safety Vault."
+                              );
+                            }
+                          }}
+                          className="btn btn-secondary btn-sm"
+                        >
+                          <RefreshCwIcon size={14} />
+                          <span>Check Connection &amp; Retry</span>
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() =>
+                            loadHavensForCoordinates(
+                              centerCoords.lat,
+                              centerCoords.lon,
+                              currentLocationName,
+                              activeCategory,
+                              null,
+                              searchRadius
+                            )
+                          }
+                          className="btn btn-primary btn-sm"
+                        >
+                          <RefreshCwIcon size={14} />
+                          <span>Retry Live Query</span>
+                        </button>
+                        {activeCategory !== 'all' && (
+                          <button
+                            onClick={() => {
+                              if (activeSituation) setActiveSituation(null);
+                              handleCategoryChange('all');
+                            }}
+                            className="btn btn-secondary btn-sm"
+                          >
+                            <span>Reset to All Categories</span>
+                          </button>
+                        )}
+                        {searchRadius < 10000 && (
+                          <button
+                            onClick={() => handleRadiusChange(10000)}
+                            className="btn btn-secondary btn-sm"
+                          >
+                            <span>Expand Radius to 10 km</span>
+                          </button>
+                        )}
+                        <button
+                          onClick={() => {
+                            setSearchInput('Kempegowda Bus Station, Majestic, Bengaluru');
+                            loadHavensForCoordinates(12.9767, 77.5713, 'Bengaluru (Majestic)', 'all', null, searchRadius);
+                          }}
+                          className="btn btn-ghost btn-sm"
+                        >
+                          <span>Try Bengaluru Central</span>
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
             </Card>
           )}
 
-          {/* Empty State: 0 Facilities in OSM for this category/radius */}
-          {!isLoading && !errorMessage && facilities.length === 0 && (
+          {/* Empty State: 0 Facilities in OSM for this category/radius (Shown strictly when Online with 0 results) */}
+          {!isLoading && !errorMessage && isOnline && facilities.length === 0 && (
             <Card
               variant="default"
               style={{
@@ -1080,16 +1731,41 @@ export const AssistanceMap = () => {
               <h3 style={{ fontSize: 'var(--text-base)', color: 'var(--color-forest)', marginBottom: '0.35rem' }}>
                 No facilities found in this category
               </h3>
-              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-charcoal-muted)', maxWidth: '440px', margin: '0 auto 1rem auto' }}>
-                There are no facilities tagged as "{activeCategory}" within {searchRadius / 1000} km of {currentLocationName} in the OpenStreetMap database.
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-charcoal-muted)', maxWidth: '460px', margin: '0 auto 1rem auto', lineHeight: 1.5 }}>
+                There are no facilities tagged as &ldquo;{activeCategory}&rdquo; within {searchRadius / 1000} km of {currentLocationName} in the OpenStreetMap database.
+                Physical services in smaller towns may not be mapped on OSM. Please use the direct emergency hotlines below if urgent.
               </p>
+
+              {/* Immediate Direct Helplines accessible during empty state */}
+              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
+                <a href="tel:112" className="emergency-helpline-link" title="National Emergency & Police">
+                  <PhoneIcon size={11} />
+                  <span>Police / Emergency: Call 112</span>
+                </a>
+                <a href="tel:108" className="emergency-helpline-link" title="Ambulance & Medical Emergency">
+                  <PhoneIcon size={11} />
+                  <span>Ambulance: Call 108</span>
+                </a>
+                <a href="tel:1091" className="emergency-helpline-link" title="Women Helpline">
+                  <PhoneIcon size={11} />
+                  <span>Women Helpline: Call 1091</span>
+                </a>
+                <a href="tel:139" className="emergency-helpline-link" title="Railway Security">
+                  <PhoneIcon size={11} />
+                  <span>Railway Security: Call 139</span>
+                </a>
+              </div>
+
               <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', flexWrap: 'wrap' }}>
                 {activeCategory !== 'all' && (
                   <button
-                    onClick={() => handleCategoryChange('all')}
+                    onClick={() => {
+                      if (activeSituation) setActiveSituation(null);
+                      handleCategoryChange('all');
+                    }}
                     className="btn btn-secondary btn-sm"
                   >
-                    <span>Search All Havens Nearby</span>
+                    <span>Search All Categories Nearby</span>
                   </button>
                 )}
                 {searchRadius < 10000 && (
@@ -1100,12 +1776,23 @@ export const AssistanceMap = () => {
                     <span>Expand Radius to 10 km</span>
                   </button>
                 )}
+                {(filter24x7 || filterWomenDesk) && (
+                  <button
+                    onClick={() => {
+                      setFilter24x7(false);
+                      setFilterWomenDesk(false);
+                    }}
+                    className="btn btn-ghost btn-sm"
+                  >
+                    <span>Clear Quick Filters</span>
+                  </button>
+                )}
               </div>
             </Card>
           )}
 
           {/* Empty State: Facilities exist, but filtered out by active Quick Filters */}
-          {!isLoading && !errorMessage && facilities.length > 0 && displayedFacilities.length === 0 && (
+          {!isLoading && !errorMessage && isOnline && facilities.length > 0 && displayedFacilities.length === 0 && (
             <Card
               variant="default"
               style={{
@@ -1120,9 +1807,26 @@ export const AssistanceMap = () => {
               <h3 style={{ fontSize: 'var(--text-base)', color: 'var(--color-forest)', marginBottom: '0.35rem' }}>
                 No facilities match your active quick filters
               </h3>
-              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-charcoal-muted)', maxWidth: '440px', margin: '0 auto 1rem auto' }}>
-                We found <strong>{facilities.length}</strong> facilities within {searchRadius / 1000} km of {currentLocationName}, but none currently match the {filter24x7 && filterWomenDesk ? '24/7 and Women Helpdesk' : filter24x7 ? '24/7' : 'Women Helpdesk'} criteria.
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-charcoal-muted)', maxWidth: '460px', margin: '0 auto 1rem auto', lineHeight: 1.5 }}>
+                We found <strong>{facilities.length}</strong> facilities within {searchRadius / 1000} km of {currentLocationName}, but none currently have verified {filter24x7 && filterWomenDesk ? '24/7 hours and Women Helpdesk' : filter24x7 ? '24/7 hours' : 'Women Helpdesk'} tags in OpenStreetMap.
               </p>
+
+              {/* Direct Helplines accessible in filtered empty state */}
+              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
+                <a href="tel:112" className="emergency-helpline-link">
+                  <PhoneIcon size={11} />
+                  <span>Police / Emergency: 112</span>
+                </a>
+                <a href="tel:108" className="emergency-helpline-link">
+                  <PhoneIcon size={11} />
+                  <span>Ambulance: 108</span>
+                </a>
+                <a href="tel:1091" className="emergency-helpline-link">
+                  <PhoneIcon size={11} />
+                  <span>Women Helpline: 1091</span>
+                </a>
+              </div>
+
               <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', flexWrap: 'wrap' }}>
                 <button
                   onClick={() => {
@@ -1131,7 +1835,7 @@ export const AssistanceMap = () => {
                   }}
                   className="btn btn-primary btn-sm"
                 >
-                  <span>Clear Quick Filters</span>
+                  <span>Clear Quick Filters (Show all {facilities.length})</span>
                 </button>
                 {searchRadius < 10000 && (
                   <button
@@ -1141,8 +1845,43 @@ export const AssistanceMap = () => {
                     <span>Expand Radius to 10 km</span>
                   </button>
                 )}
+                {activeCategory !== 'all' && (
+                  <button
+                    onClick={() => {
+                      if (activeSituation) setActiveSituation(null);
+                      handleCategoryChange('all');
+                    }}
+                    className="btn btn-ghost btn-sm"
+                  >
+                    <span>Reset to All Categories</span>
+                  </button>
+                )}
               </div>
             </Card>
+          )}
+
+          {/* Offline Preserved Facilities Notice */}
+          {!isOnline && displayedFacilities.length > 0 && (
+            <div
+              style={{
+                padding: '0.55rem 0.85rem',
+                backgroundColor: 'var(--color-ivory-light)',
+                border: '1px solid var(--border-medium)',
+                borderRadius: 'var(--radius-sm)',
+                fontSize: 'var(--text-xs)',
+                color: 'var(--color-charcoal)',
+                marginBottom: 'var(--space-3)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}
+              role="status"
+            >
+              <InfoIcon size={14} />
+              <span>
+                Displaying <strong>{displayedFacilities.length}</strong> previously loaded safe havens for {currentLocationName} (Offline Mode). Direct phone numbers can be reached via cellular voice calls.
+              </span>
+            </div>
           )}
 
           {/* Facility Cards List */}
@@ -1180,19 +1919,28 @@ export const AssistanceMap = () => {
                         <span style={{ marginLeft: '0.25rem' }}>{facility.subcategory}</span>
                       </Badge>
 
-                      {facility.is24_7 && (
-                        <span
-                          style={{
-                            fontSize: '0.68rem',
-                            fontWeight: 700,
-                            padding: '0.15rem 0.45rem',
-                            borderRadius: 'var(--radius-pill)',
-                            backgroundColor: 'var(--color-success-bg)',
-                            color: 'var(--color-forest)',
-                            border: '1px solid var(--border-subtle)'
-                          }}
-                        >
-                          24/7 Available
+                      {/* Truthful Quality Badges: Hours & Phone */}
+                      {facility.is24_7 ? (
+                        <span className="quality-badge quality-badge-hours-247" title="OpenStreetMap record confirmed 24/7 hours">
+                          24/7 Confirmed
+                        </span>
+                      ) : facility.hasOpeningHours ? (
+                        <span className="quality-badge quality-badge-hours-listed" title={`Opening hours tagged in OSM: ${facility.openingHours}`}>
+                          Hours Listed
+                        </span>
+                      ) : (
+                        <span className="quality-badge quality-badge-hours-unconfirmed" title="Opening hours are not tagged in OpenStreetMap. Does not necessarily mean the facility is closed.">
+                          Hours Unconfirmed
+                        </span>
+                      )}
+
+                      {facility.hasPhone ? (
+                        <span className="quality-badge quality-badge-phone-listed" title="Direct telephone number is tagged in OpenStreetMap">
+                          Phone Listed
+                        </span>
+                      ) : (
+                        <span className="quality-badge quality-badge-phone-unlisted" title="No direct telephone number in OpenStreetMap. Use national emergency helpline if urgently needed.">
+                          Phone Unlisted
                         </span>
                       )}
 
@@ -1377,6 +2125,18 @@ export const AssistanceMap = () => {
                     >
                       OSM Node #{facility.osmId}
                     </a>
+                  </div>
+
+                  {/* Truthful Data Quality Footnote */}
+                  <div
+                    style={{
+                      marginTop: '0.45rem',
+                      fontSize: '0.66rem',
+                      lineHeight: 1.35,
+                      color: 'var(--color-charcoal-subtle)'
+                    }}
+                  >
+                    * Physical record from OpenStreetMap. Unlisted contact or unconfirmed hours indicate missing records in OSM, not necessarily absence of service at the physical facility.
                   </div>
                 </div>
               );

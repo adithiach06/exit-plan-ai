@@ -110,6 +110,14 @@ export async function geocodeLocation(query) {
     throw new Error('Please enter a city, neighbourhood, or landmark name to search.');
   }
 
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    const offlineErr = new Error(
+      "You're currently offline. Location searches require an active internet connection. Your saved emergency information remains available in Safety Vault."
+    );
+    offlineErr.isOffline = true;
+    throw offlineErr;
+  }
+
   const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
     query.trim()
   )}&countrycodes=in&limit=5&addressdetails=1`;
@@ -146,6 +154,17 @@ export async function geocodeLocation(query) {
     }));
   } catch (err) {
     clearTimeout(timeoutId);
+    if (
+      (typeof navigator !== 'undefined' && !navigator.onLine) ||
+      err.message?.includes('Failed to fetch') ||
+      err.message?.includes('NetworkError')
+    ) {
+      const offlineErr = new Error(
+        "You're currently offline. Location searches require an active internet connection. Your saved emergency information remains available in Safety Vault."
+      );
+      offlineErr.isOffline = true;
+      throw offlineErr;
+    }
     if (err.name === 'AbortError') {
       throw new Error('Location lookup request timed out. Please check your internet connection and try again.');
     }
@@ -157,6 +176,10 @@ export async function geocodeLocation(query) {
  * Reverse geocode a latitude and longitude coordinate to human-readable place.
  */
 export async function reverseGeocode(lat, lon) {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return `Location (${lat.toFixed(4)}, ${lon.toFixed(4)})`;
+  }
+
   const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&addressdetails=1`;
 
   const controller = new AbortController();
@@ -228,7 +251,7 @@ function buildOverpassQuery(lat, lon, category = 'all', radiusMeters = 6000) {
 /**
  * Categorizes an OSM element and normalizes verified attributes.
  */
-function normalizeOsmFacility(element, centerLat, centerLon) {
+export function normalizeOsmFacility(element, centerLat, centerLon) {
   const tags = element.tags || {};
   const lat = element.lat ?? element.center?.lat;
   const lon = element.lon ?? element.center?.lon;
@@ -305,7 +328,12 @@ function normalizeOsmFacility(element, centerLat, centerLon) {
 
   // 24/7 or emergency indicator
   const is24_7 = tags.opening_hours === '24/7' || tags['emergency'] === 'yes';
+  const hasOpeningHours = Boolean(tags.opening_hours);
   const openingHours = tags.opening_hours || (is24_7 ? '24/7' : null);
+
+  const hasPhone = Boolean(phone);
+  const phoneStatus = hasPhone ? 'listed' : 'unlisted';
+  const hoursStatus = is24_7 ? 'confirmed_247' : hasOpeningHours ? 'listed' : 'unconfirmed';
 
   const distanceKm = calculateDistanceKm(centerLat, centerLon, lat, lon);
 
@@ -321,9 +349,13 @@ function normalizeOsmFacility(element, centerLat, centerLon) {
     distanceKm,
     address,
     phone,
+    hasPhone,
+    phoneStatus,
     website,
     is24_7,
+    hasOpeningHours,
     openingHours,
+    hoursStatus,
     isWomenDesk:
       category === 'police' &&
       (tags.female === 'yes' ||
@@ -358,7 +390,17 @@ export async function fetchLiveSafeHavens(lat, lon, category = 'all', radiusMete
     };
   }
 
-  // 2. In-flight request deduplication: reuse existing promise if identical query is currently in progress
+  // 2. Fast offline check: if browser is offline, throw immediately without waiting on abort timeouts
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    const offlineErr = new Error(
+      "You're currently offline. Live Safe Havens searches require an internet connection. Your saved emergency information remains available in Safety Vault."
+    );
+    offlineErr.isOffline = true;
+    offlineErr.code = 'OFFLINE';
+    throw offlineErr;
+  }
+
+  // 3. In-flight request deduplication: reuse existing promise if identical query is currently in progress
   const cacheKey = getCacheKey(lat, lon, category, radiusMeters);
   if (inFlightQueries.has(cacheKey)) {
     return inFlightQueries.get(cacheKey);
@@ -441,9 +483,25 @@ export async function fetchLiveSafeHavens(lat, lon, category = 'all', radiusMete
         } catch (err) {
           clearTimeout(timeoutId);
           lastError = err;
-          // Loop will retry on next attempt or advance to the next endpoint mirror
+          // If browser went offline during fetch, break immediately rather than fruitlessly cycling endpoints
+          if (typeof navigator !== 'undefined' && !navigator.onLine) {
+            break;
+          }
         }
       }
+    }
+
+    if (
+      (typeof navigator !== 'undefined' && !navigator.onLine) ||
+      lastError?.message?.includes('Failed to fetch') ||
+      lastError?.message?.includes('NetworkError')
+    ) {
+      const offlineErr = new Error(
+        "You're currently offline. Live Safe Havens searches require an internet connection. Your saved emergency information remains available in Safety Vault."
+      );
+      offlineErr.isOffline = true;
+      offlineErr.code = 'OFFLINE';
+      throw offlineErr;
     }
 
     if (lastError?.name === 'AbortError') {

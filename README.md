@@ -301,7 +301,6 @@ AI tools were used as development aids. Their involvement does not replace the n
 **Source Code:**  
 https://github.com/adithiach06/exit-plan-ai
 
-**Live Demo:** Add your deployed website URL here once deployment is complete.
 
 ---
 

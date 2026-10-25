@@ -112,13 +112,13 @@ export const Assistant = () => {
               </span>
               <Badge variant="sage">Pre-Verified Scenario Protocols</Badge>
               {isBackendConfigured ? (
-                <Badge variant="forest">Secure Backend Gateway Ready</Badge>
+                <Badge variant="forest">Optional Backend Gateway Configured</Badge>
               ) : (
                 <Badge variant="outline">Built-In Offline Engine</Badge>
               )}
             </div>
             <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-charcoal)', margin: 0, lineHeight: 1.55 }}>
-              This advisor operates on pre-verified safety blueprints. External AI intelligence is integrated exclusively through a secure backend proxy to safeguard credentials.
+              This advisor operates on pre-verified safety blueprints and runs locally in your browser using built-in crisis guidance protocols. It does not require a backend server or external generative AI connection.
               <strong> EXIT PLAN AI does not automatically track your live position or dispatch emergency services. In situations involving immediate physical danger in India, call 112 directly.</strong>
             </p>
           </div>

@@ -1,109 +1,176 @@
 # EXIT PLAN AI
 
-> **"When Plan A Fails, You're Not Out of Options."**
+> **When Plan A Fails, You're Not Out of Options.**
 
-An AI-powered travel safety and cybersecurity web application designed primarily for solo female travellers in India. EXIT PLAN AI bridges pre-trip risk preparedness, instant offline recovery protocols, safe haven discovery, and cybersecurity vigilance against travel fraud.
+EXIT PLAN AI is a travel safety and cybersecurity web application designed primarily for solo female travellers in India. It helps users prepare backup travel plans, discover nearby safe havens, access emergency information, and identify potential travel-related scams.
 
----
+## Key Features
 
-## Design System & Editorial Aesthetic
+### 1. Exit Plans — Backup Travel Planning
 
-EXIT PLAN AI uses a premium, editorial travel-tech aesthetic:
-- **Forest Green** (`#183D32`): Trust, resilience, and command
-- **Warm Ivory** (`#F7F5EF`): High-legibility paper tone
-- **Sage** (`#DCE7DC`): Calming secondary accents
-- **Muted Terracotta** (`#C9785B`): Critical alerts, emergency actions, and active waypoints
-- **Charcoal** (`#242824`): Crisp editorial body typography
+* Create and manage travel itineraries.
+* Save departure and return dates, destinations, and transport details.
+* Validate important trip information.
+* Use saved itinerary information to support other safety features.
 
-Typography pairs **Newsreader** (classic editorial serif) for headings with **Plus Jakarta Sans** (clean, crisp sans-serif) for body and interface elements.
+### 2. Safe Havens — Nearby Assistance
 
----
+* Search for nearby hospitals, police stations, transport facilities, and accommodation.
+* Explore available facilities on an interactive map.
+* Filter facilities and access available location information.
+* Use situation-based shortcuts for common travel emergencies.
+* Retain previously loaded facility information during tested offline scenarios.
+
+**Map data:** The tested map interface uses Leaflet and OpenStreetMap, with facility search supported by external geocoding and map-data services. Availability depends on connectivity and the data returned by those services.
+
+### 3. Scam Shield — Travel Scam Detection
+
+* Analyse suspicious messages for potential scam indicators.
+* Detect patterns such as urgency, credential requests, payment demands, and digital-arrest threats.
+* Display risk assessments and safety guidance.
+* Perform the tested rule-based checks in the browser.
+
+Risk assessments are guidance, not a guarantee that a message is safe or fraudulent.
+
+### 4. Safety Vault — Emergency Information
+
+* Store emergency contacts and travel-related safety information locally.
+* Access saved safety information within the supported offline experience.
+* Maintain a personal safety checklist.
+* Generate an emergency summary for printing or saving as a PDF.
+
+**Privacy note:** Information stored in browser storage may be lost if the user clears site data or changes browsers or devices. Do not treat the vault as a substitute for secure, encrypted document storage.
+
+### 5. Travel Advisor — Crisis Guidance
+
+* Browse predefined travel crisis scenarios.
+* Access step-by-step contingency guidance.
+* Review practical alternatives and relevant helpline information.
+* Use saved itinerary context where supported.
+
+The application does not automatically track a user's live location or dispatch emergency services.
+
+### 6. SOS Help
+
+* Display emergency helplines.
+* Access saved emergency contacts.
+* Copy an emergency message template.
+
+In immediate danger in India, call **112** directly.
+
+## Design System
+
+EXIT PLAN AI uses an editorial travel-tech design with a focus on readability and calm, accessible interfaces.
+
+* **Forest Green:** `#183D32`
+* **Warm Ivory:** `#F7F5EF`
+* **Sage:** `#DCE7DC`
+* **Muted Terracotta:** `#C9785B`
+* **Charcoal:** `#242824`
+
+The design pairs Newsreader-style editorial headings with clean sans-serif interface typography.
 
 ## Technology Stack
 
-- **Frontend:** React 18, Vite 5, JavaScript (ES Modules)
-- **Styling:** Modular CSS variables and design tokens (`variables.css`, `index.css`)
-- **Offline & Persistence:** LocalStorage API + Service Worker (PWA manifest)
-- **Emergency Integration:** India 24/7 National Emergency directory (112, 1091, 181, 139, 1930)
-- **External Services (When Configured):**
-  - Google Maps API (safe havens and assistance locator)
-  - Secure Backend Proxy for AI services (protects API credentials)
+* **Frontend:** React, JavaScript (ES Modules)
+* **Build tool:** Vite
+* **Styling:** CSS
+* **Persistence:** Browser LocalStorage for supported saved information
+* **Mapping:** Leaflet and OpenStreetMap
+* **External data:** Geocoding and facility-data services, subject to their availability and terms
 
----
+Confirm the exact installed versions and any additional integrations in `package.json` and the project source before listing them as dependencies.
 
 ## Project Structure
 
-```
+```text
 exit-plan-ai/
 ├── public/
-│   ├── favicon.svg          # Brand shield icon
-│   ├── manifest.json        # PWA Web App Manifest
-│   └── sw.js                # Offline caching service worker
 ├── src/
 │   ├── components/
-│   │   ├── common/          # Reusable UI components
-│   │   │   ├── Badge.jsx    # Status pills & tags
-│   │   │   ├── Button.jsx   # Primary, secondary, terracotta, emergency
-│   │   │   ├── Card.jsx     # Editorial bordered cards
-│   │   │   ├── Icons.jsx    # SVG icons with consistent 1.6px stroke
-│   │   │   ├── Modal.jsx    # Dialog wrapper
-│   │   │   └── SosModal.jsx # Instant India emergency hotline drawer
-│   │   └── layout/          # Layout components
-│   │       ├── AppLayout.jsx# Global layout wrapper
-│   │       ├── Header.jsx   # Top utility bar, brand lockup & navigation
-│   │       └── Footer.jsx   # India helpline directory & architecture notes
+│   │   ├── common/
+│   │   └── layout/
 │   ├── hooks/
-│   │   ├── useLocalStorage.js # Safe JSON localStorage persistence
-│   │   └── useOnlineStatus.js # Online/Offline network watcher
 │   ├── pages/
-│   │   ├── Home.jsx           # Mission overview & architecture roadmap
-│   │   ├── ExitPlan.jsx       # Stage 1: Backup Travel Plans (Plan B)
-│   │   ├── AssistanceMap.jsx  # Stage 2: Safe Havens & Google Maps locator
-│   │   ├── MessageScanner.jsx # Stage 3: Cybersecurity & scam shield
-│   │   ├── SafetyVault.jsx    # Stage 4: Offline document & contact vault
-│   │   └── Assistant.jsx      # Stage 5: AI Travel Safety Advisor
+│   │   ├── Home.jsx
+│   │   ├── ExitPlan.jsx
+│   │   ├── AssistanceMap.jsx
+│   │   ├── MessageScanner.jsx
+│   │   ├── SafetyVault.jsx
+│   │   └── Assistant.jsx
 │   ├── services/
-│   │   ├── api.js             # Backend AI proxy client
-│   │   └── storage.js         # Local persistence & emergency contacts
 │   ├── styles/
-│   │   ├── variables.css      # Brand tokens, colors, spacing, typography
-│   │   └── index.css          # Editorial layout utilities & resets
-│   ├── App.jsx                # Router & active page dispatcher
-│   └── main.jsx               # React DOM root & PWA registration
-├── .env.example               # Template for environment configuration
-├── .gitignore                 # Secrets and build ignore rules
-├── index.html                 # Entry HTML with web fonts
-├── package.json               # Dependencies and scripts
-└── vite.config.js             # Vite configuration
+│   ├── App.jsx
+│   └── main.jsx
+├── .env.example
+├── .gitignore
+├── index.html
+├── package.json
+└── vite.config.js
 ```
 
----
+Some files or folders may differ depending on the current implementation.
 
 ## Getting Started
 
-### 1. Prerequisites
-Ensure you have **Node.js** (v18 or higher) installed on your machine.
-If Node.js is not yet installed, you can install it using Windows Package Manager:
-```powershell
-winget install OpenJS.NodeJS.LTS
-```
-Or download the official installer from [nodejs.org](https://nodejs.org).
+### Prerequisites
 
-### 2. Install Dependencies
+Install a supported version of Node.js. Check `package.json` for the project's required version.
+
+Official download: https://nodejs.org/
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/adithiach06/exit-plan-ai.git
+cd exit-plan-ai
+```
+
+### 2. Install dependencies
+
 ```bash
 npm install
 ```
 
-### 3. Start the Development Server
+### 3. Start the development server
+
 ```bash
 npm run dev
 ```
-Open `http://localhost:5173` in your browser.
 
----
+Open the local URL printed in the terminal. Vite may use a port other than `5173` if that port is already occupied.
 
-## Security & Secrets Policy
+### 4. Create a production build
 
-1. **Zero Secret Leaks:** Client-side bundles never contain private API keys.
-2. **Backend Gateway:** External AI models are accessed exclusively through a secure backend proxy (`VITE_AI_BACKEND_URL`).
-3. **Local Privacy:** User trip itineraries and emergency notes are stored strictly in client-side LocalStorage unless the user explicitly chooses to transmit them.
+```bash
+npm run build
+```
+
+The production output is generated in the `dist/` directory.
+
+## Security and Privacy
+
+* Keep private API keys and credentials out of client-side code and Git commits.
+* Ignore local environment files using `.gitignore`.
+* Remember that browser LocalStorage is not encrypted secure storage.
+* Treat scam scores as indicators rather than definitive judgments.
+* External maps, geocoding, and facility searches may require an internet connection.
+* The application does not automatically contact emergency services.
+
+Only configure external AI services through a properly secured backend if that integration is implemented and deployed.
+
+## Limitations
+
+* Facility data may be incomplete, outdated, or unavailable.
+* Some features require an active internet connection.
+* Previously loaded map and facility information may be available offline, but live searches require connectivity.
+* Emergency helplines and guidance are provided for assistance; they do not replace professional emergency responders.
+* Browser storage does not guarantee recovery after site data is cleared or the browser environment changes.
+
+## Responsible Use
+
+EXIT PLAN AI is intended to support travel preparedness and safety awareness. Users should verify critical information when possible and contact official emergency services when necessary.
+
+## Acknowledgements
+
+This project uses third-party libraries and external services. Their respective licences, attribution requirements, and usage terms should be reviewed and acknowledged before distribution.

@@ -20,7 +20,11 @@ export const AppLayout = ({ currentRoute, onRouteChange, children }) => {
 
       <Footer onOpenSosModal={() => setIsSosOpen(true)} />
 
-      <SosModal isOpen={isSosOpen} onClose={() => setIsSosOpen(false)} />
+      <SosModal
+        isOpen={isSosOpen}
+        onClose={() => setIsSosOpen(false)}
+        onNavigate={onRouteChange}
+      />
     </div>
   );
 };

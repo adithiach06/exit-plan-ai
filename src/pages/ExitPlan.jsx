@@ -35,6 +35,69 @@ import {
   DEFAULT_INDIA_HOTLINES
 } from '../services/storage';
 
+/**
+ * Return today's local date string in YYYY-MM-DD format
+ */
+export const getTodayDateString = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+/**
+ * Validate an optional emergency contact phone number.
+ * Empty or whitespace-only is valid (field is optional).
+ * When provided, requires valid characters, an optional single leading +,
+ * and between 10 and 15 digits (ITU-T E.164 compliant).
+ */
+export const validateEmergencyPhone = (phone) => {
+  if (!phone || typeof phone !== 'string') {
+    return { isValid: true };
+  }
+
+  const trimmed = phone.trim();
+  if (!trimmed) {
+    return { isValid: true };
+  }
+
+  // Check for allowed characters: digits, spaces, hyphens, parentheses, and leading +
+  if (!/^[0-9+\s\-()]+$/.test(trimmed)) {
+    return {
+      isValid: false,
+      error: 'Phone number can only contain digits, spaces, hyphens, parentheses, and an optional leading "+".'
+    };
+  }
+
+  // Plus sign can only appear once and only at the very start
+  const plusIndex = trimmed.indexOf('+');
+  if (plusIndex > 0 || (trimmed.match(/\+/g) || []).length > 1) {
+    return {
+      isValid: false,
+      error: 'International "+" prefix may only appear at the beginning of the phone number.'
+    };
+  }
+
+  // Count digit characters
+  const digitsOnly = trimmed.replace(/\D/g, '');
+  if (digitsOnly.length < 10) {
+    return {
+      isValid: false,
+      error: 'Please enter a valid 10 to 15-digit phone number (e.g. +91 98765 43210).'
+    };
+  }
+
+  if (digitsOnly.length > 15) {
+    return {
+      isValid: false,
+      error: 'Phone number cannot exceed 15 digits. Please enter a valid telephone number.'
+    };
+  }
+
+  return { isValid: true };
+};
+
 export const ExitPlan = () => {
   // State for views: 'create' | 'view' | 'list'
   const [viewMode, setViewMode] = useState('create');
@@ -214,42 +277,70 @@ export const ExitPlan = () => {
     if (formErrors[name]) {
       setFormErrors((prev) => ({ ...prev, [name]: null }));
     }
+
+    // Clear related date errors when modifying dates
+    if (name === 'departureDate' && formErrors.returnDate) {
+      setFormErrors((prev) => ({ ...prev, returnDate: null }));
+    }
   };
 
   // Validate form fields
   const validateForm = () => {
     const errors = {};
+    const today = getTodayDateString();
 
-    if (!formData.startingLocation.trim()) {
+    // 1. Starting Location (Required)
+    if (!formData.startingLocation || !formData.startingLocation.trim()) {
       errors.startingLocation = 'Starting location is required';
     }
 
-    if (!formData.destination.trim()) {
+    // 2. Destination (Required)
+    if (!formData.destination || !formData.destination.trim()) {
       errors.destination = 'Destination is required';
     }
 
+    // 3. Departure Date (Required & cannot be in the past)
     if (!formData.departureDate) {
       errors.departureDate = 'Departure date is required';
+    } else if (formData.departureDate < today) {
+      errors.departureDate = 'Departure date cannot be in the past';
     }
 
+    // 4. Return Date (Required, cannot be in the past, cannot be before departure)
     if (!formData.returnDate) {
       errors.returnDate = 'Return date is required';
+    } else if (formData.returnDate < today) {
+      errors.returnDate = 'Return date cannot be in the past';
+    } else if (formData.departureDate && formData.returnDate < formData.departureDate) {
+      errors.returnDate = 'Return date cannot be earlier than departure date';
     }
 
-    if (formData.departureDate && formData.returnDate) {
-      const dep = new Date(formData.departureDate);
-      const ret = new Date(formData.returnDate);
-      if (ret < dep) {
-        errors.returnDate = 'Return date cannot be earlier than departure date';
-      }
-    }
-
-    if (!formData.transportMethod) {
+    // 5. Transport Method (Required)
+    if (!formData.transportMethod || !formData.transportMethod.trim()) {
       errors.transportMethod = 'Please select a primary transport method';
     }
 
+    // 6. Emergency Contact Phone (Optional, but validate if provided)
+    if (formData.emergencyContactPhone && formData.emergencyContactPhone.trim()) {
+      const phoneValidation = validateEmergencyPhone(formData.emergencyContactPhone);
+      if (!phoneValidation.isValid) {
+        errors.emergencyContactPhone = phoneValidation.error;
+      }
+    }
+
     setFormErrors(errors);
-    return Object.keys(errors).length === 0;
+
+    const errorFields = Object.keys(errors);
+    if (errorFields.length > 0) {
+      const firstFieldId = errorFields[0];
+      const el = document.getElementById(firstFieldId);
+      if (el && typeof el.focus === 'function') {
+        el.focus();
+      }
+      return false;
+    }
+
+    return true;
   };
 
   // Generate / Save Plan
@@ -283,6 +374,12 @@ export const ExitPlan = () => {
 
       const planToSave = {
         ...formData,
+        startingLocation: formData.startingLocation.trim(),
+        destination: formData.destination.trim(),
+        accommodation: formData.accommodation.trim(),
+        emergencyContactName: formData.emergencyContactName.trim(),
+        emergencyContactPhone: formData.emergencyContactPhone.trim(),
+        notes: formData.notes.trim(),
         id: planId,
         checklist,
         createdAt
@@ -630,6 +727,7 @@ export const ExitPlan = () => {
                     id="departureDate"
                     name="departureDate"
                     type="date"
+                    min={getTodayDateString()}
                     value={formData.departureDate}
                     onChange={handleInputChange}
                     className={`form-input ${formErrors.departureDate ? 'input-invalid' : ''}`}
@@ -653,6 +751,7 @@ export const ExitPlan = () => {
                     id="returnDate"
                     name="returnDate"
                     type="date"
+                    min={formData.departureDate || getTodayDateString()}
                     value={formData.returnDate}
                     onChange={handleInputChange}
                     className={`form-input ${formErrors.returnDate ? 'input-invalid' : ''}`}
@@ -678,6 +777,8 @@ export const ExitPlan = () => {
                     value={formData.transportMethod}
                     onChange={handleInputChange}
                     className={`form-select ${formErrors.transportMethod ? 'input-invalid' : ''}`}
+                    aria-invalid={Boolean(formErrors.transportMethod)}
+                    aria-describedby={formErrors.transportMethod ? 'transportMethod-error' : undefined}
                   >
                     <option value="Train">Train (IRCTC / Indian Railways)</option>
                     <option value="Bus">Interstate Bus (State / Private)</option>
@@ -686,7 +787,7 @@ export const ExitPlan = () => {
                     <option value="Other">Other / Multi-modal Transit</option>
                   </select>
                   {formErrors.transportMethod && (
-                    <div className="form-error">
+                    <div id="transportMethod-error" className="form-error">
                       <AlertIcon size={13} />
                       <span>{formErrors.transportMethod}</span>
                     </div>
@@ -743,8 +844,17 @@ export const ExitPlan = () => {
                     placeholder="e.g. +91 98765 43210"
                     value={formData.emergencyContactPhone}
                     onChange={handleInputChange}
-                    className="form-input"
+                    className={`form-input ${formErrors.emergencyContactPhone ? 'input-invalid' : ''}`}
+                    aria-invalid={Boolean(formErrors.emergencyContactPhone)}
+                    aria-describedby={formErrors.emergencyContactPhone ? 'emergencyContactPhone-error' : undefined}
                   />
+                  {formErrors.emergencyContactPhone && (
+                    <div id="emergencyContactPhone-error" className="form-error">
+                      <AlertIcon size={13} />
+                      <span>{formErrors.emergencyContactPhone}</span>
+                    </div>
+                  )}
+                  <span className="form-help">Optional. Enter 10 to 15 digits with optional country code (e.g. +91 98765 43210).</span>
                 </div>
               </div>
 

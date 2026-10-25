@@ -1,178 +1,212 @@
-# EXIT PLAN AI
+# 🧳 EXIT PLAN AI
+### When Plan A Fails, You're Not Out of Options.
 
-> **When Plan A Fails, You're Not Out of Options.**
+**EXIT PLAN AI** is a travel safety and cybersecurity web application designed primarily for solo female travellers in India. It helps travellers prepare for unexpected situations, identify potentially suspicious messages, locate nearby safety facilities, and access practical guidance when travel plans go wrong.
 
-EXIT PLAN AI is a travel safety and cybersecurity web application designed primarily for solo female travellers in India. It helps users prepare backup travel plans, discover nearby safe havens, access emergency information, and identify potential travel-related scams.
-
-The application is implemented as a **standalone React + Vite single-page web client**. All built-in core features run entirely in the browser without requiring a backend server or external generative AI API.
-
----
-
-## Architectural Overview
-
-* **Standalone Web Client:** The frontend runs directly in modern web browsers. No backend server (e.g. Node/Express, Python, or Flask) needs to be launched or configured to run the application.
-* **No External Generative AI Required:** All threat detection and contingency guidance operate via built-in, deterministic client-side engines and pre-verified safety blueprints.
-* **Optional Backend Proxy (`src/services/api.js`):** The repository includes `src/services/api.js` containing optional backend-proxy client functions (`checkBackendHealth`, `analyzeTravelMessage`, `requestAdvisorGuidance`). According to the architectural inspection, these functions are **not currently connected to or invoked by any UI component**; they serve as architectural scaffolding for optional future enterprise proxy deployment.
-* **Privacy-First Data Storage:** Personal emergency contacts and trip itineraries are saved exclusively in the browser's `localStorage` and never transmitted to external servers.
+By bringing preventive safety planning, digital scam awareness, emergency resources, and travel assistance together, EXIT PLAN AI aims to help users feel more prepared when unexpected situations arise.
 
 ---
 
-## Key Features
+## 🎯 Problem Statement
 
-### 1. Exit Plans — Backup Travel Planning
+Solo female travellers may face unexpected travel disruptions, unfamiliar surroundings, digital scams, and situations that require quick access to safety information.
 
-* Create and manage travel itineraries with origin, destination, dates, transport modes, and accommodation details.
-* Validate trip information, preventing invalid phone numbers and past departure dates.
-* Stored strictly in browser local storage (`localStorage`); no itinerary data is sent to external servers.
-* Active trip context automatically integrates into the Travel Advisor and Safe Havens shortcuts.
+During stressful situations, finding appropriate resources and deciding what to do next can be difficult.
 
-### 2. Safe Havens — Nearby Assistance
+EXIT PLAN AI addresses these challenges through a centralised platform that helps users prepare backup travel plans, explore nearby facilities, assess suspicious messages, and access situation-specific safety guidance.
 
-* Search for nearby hospitals, police stations, transport hubs, and women-friendly accommodations.
-* Interactive map powered by Leaflet and OpenStreetMap data.
-* Live facility queries use public OpenStreetMap Overpass API endpoints with automatic retry strategies and endpoint fallbacks.
-* **Connectivity & Offline Behavior:** Live facility searches require active internet connectivity. However, previously loaded facility data remains accessible during an offline session, and emergency helpline shortcuts remain permanently accessible offline.
-* Quality indicators truthfully reflect whether phone numbers and 24/7 hours are listed in OpenStreetMap data without making unsupported safety claims.
+## 💡 Our Solution
 
-### 3. Scam Shield — Travel Scam Detection
+EXIT PLAN AI focuses on **preventive safety and emergency preparedness**.
 
-* Analyzes suspicious travel-related communications (SMS, WhatsApp, emails, and payment requests).
-* Detects patterns including urgency, OTP phishing, credential harvesting, fake booking cancellations, and digital-arrest extortion attempts.
-* **Deterministic Client-Side Rules:** All analysis is performed entirely in the browser using deterministic threat heuristics. No message text is ever uploaded to external servers, cloud AI models, or third-party databases.
-* Provides risk tier scores (Low, Medium, High, Critical), identified scam signatures, and immediate self-protection checklists.
-
-### 4. Safety Vault — Emergency Information
-
-* Store personal emergency contacts and travel safety checklists locally.
-* Uses browser local storage (`localStorage`) so saved contacts remain accessible even when offline.
-* Generate a formatted emergency summary ready for printing or saving as a PDF.
-* **Privacy note:** Data stored in browser storage remains on the user's device and may be cleared if browser site data is deleted. It is not an encrypted cloud vault.
-
-### 5. Travel Advisor — Crisis Guidance
-
-* Access step-by-step contingency guidance across 7 core travel crisis scenarios: transport disruption, missed transit, feeling unsafe/harassment, medical emergencies, lost passport/ID, digital extortion, and offline stranded.
-* **Predefined Crisis Protocols:** Guidance is generated from structured, pre-verified safety blueprints rather than an unconstrained generative AI model.
-* Dynamically incorporates locally saved itinerary context (e.g. current transit mode and destination) into practical alternatives.
-* Operates 100% offline within the browser with zero external dependencies.
-
-### 6. SOS Help
-
-* One-tap access to Indian national emergency helplines (112 National Emergency, 1090 Women Helpline, 139 Railway Protection, etc.).
-* Displays saved personal emergency contacts from Safety Vault with direct one-tap calling (`tel:` links).
-* Generates a pre-formatted distress message template with a reliable clipboard copy function and fallback text display.
-* **Notice:** External links and buttons initiate calls through the user's device when supported. EXIT PLAN AI does **not** automatically dispatch emergency services or track live GPS locations. In immediate physical danger in India, call **112** directly.
+Instead of concentrating on a single travel-safety feature, the application combines multiple tools to help users prepare before travelling and respond more effectively when unexpected situations arise.
 
 ---
 
-## Current Implementation vs. Future Possibilities
+## ✨ Key Features
 
-| Area | Current Implemented Functionality (Standalone Client) | Future Integration Possibilities (Optional Backend) |
-| :--- | :--- | :--- |
-| **Travel Advisor** | Built-in predefined scenario blueprints with active trip context | Optional cloud LLM proxy for free-form conversational queries |
-| **Scam Shield** | In-browser deterministic rule-based threat scoring | Cloud-assisted threat intelligence feed updates |
-| **Data Storage** | Local browser `localStorage` (private, single-device) | Optional end-to-end encrypted multi-device cloud synchronization |
-| **Emergency Actions** | Device `tel:` dialer triggers & distress template copying | Automated SMS/push dispatch to emergency contacts via SMS gateway |
-| **Backend Integration** | None required; `src/services/api.js` is an unconnected gateway stub | Deployed backend proxy server forwarding authenticated requests |
+### 1. 🗺️ Exit Plans — Preventive Safety Planner
+- Create and manage travel plans.
+- Store relevant trip details and emergency contact information.
+- Review trip information and prepare backup arrangements.
+- Validate important trip details to reduce input errors.
+
+### 2. 📍 Safe Havens — Safety Assistance Map
+- Explore nearby safety-related facilities, including hospitals, police stations, and transport facilities where available.
+- View facility locations on an interactive map.
+- Search for facilities using mapping and geospatial services.
+- Retain previously loaded facility information during an offline session.
+
+*Fresh facility searches require an internet connection.*
+
+### 3. 🛡️ Scam Shield
+- Analyse suspicious text messages using locally executed detection rules.
+- Identify potentially suspicious patterns associated with scams.
+- Display a risk assessment to help users evaluate a message.
+- Support awareness of potential digital fraud.
+
+*Risk assessments are indicative and do not guarantee that a message is safe or malicious.*
+
+### 4. 🔐 Safety Vault
+- Store emergency-related information locally in the browser.
+- Maintain an emergency checklist.
+- Review relevant trip and emergency information.
+- Prepare an emergency summary for reference or printing.
+
+### 5. 🆘 SOS Help
+- Access emergency contact options and helpline information.
+- View saved emergency contact details.
+- Copy a prepared emergency message for communication.
+
+*SOS Help does not automatically dispatch emergency services, send SMS messages, or continuously track the user's location.*
+
+### 6. 🤖 Travel Advisor
+- Explore predefined safety guidance for selected travel emergencies.
+- Access practical steps for situations such as feeling unsafe or experiencing transport cancellations.
+- Use available trip information to provide relevant context within the application.
+
+*The current Travel Advisor uses predefined safety guidance rather than a live generative AI service.*
 
 ---
 
-## Design System
+## 🛠️ Technology Stack
 
-EXIT PLAN AI uses an editorial travel-tech design system emphasizing clarity, high contrast, and calm usability during stressful situations.
+| Technology | Purpose |
+|---|---|
+| React | Building the user interface |
+| Vite | Development server and production build |
+| JavaScript | Application logic |
+| HTML and CSS | Structure and styling |
+| Leaflet | Interactive maps |
+| OpenStreetMap | Map data |
+| Overpass API | Geospatial facility queries, if configured |
+| Nominatim | Geocoding and location search, if configured |
+| Browser Local Storage | Persisting selected user data locally |
+| Git and GitHub | Version control and source-code hosting |
 
-* **Forest Green:** `#183D32`
-* **Warm Ivory:** `#F7F5EF`
-* **Sage:** `#DCE7DC`
-* **Muted Terracotta:** `#C9785B`
-* **Charcoal:** `#242824`
-
-The design pairs Newsreader-style editorial headings with clean sans-serif interface typography.
-
----
-
-## Technology Stack
-
-* **Frontend Framework:** React 18, JavaScript (ES Modules)
-* **Build Tool:** Vite 5
-* **Styling:** Modular CSS with CSS custom properties
-* **Client Storage:** Browser LocalStorage
-* **Mapping:** Leaflet & OpenStreetMap (Overpass API & Nominatim)
-* **Backend / External AI:** None required; runs completely standalone in the browser
+External services are subject to their availability, usage policies, and terms.
 
 ---
 
-## Project Structure
+## 📁 Project Structure
+
+EXIT PLAN AI uses a component-based React architecture, with separate directories for pages, reusable components, services, data, and styling.
+
+> Verify the filenames and directories below against the actual repository before submission.
 
 ```text
 exit-plan-ai/
-├── public/
+├── public/                       # Static assets
 ├── src/
-│   ├── components/
-│   │   ├── common/
-│   │   └── layout/
-│   ├── data/
-│   │   └── advisorScenarios.js
-│   ├── hooks/
-│   ├── pages/
-│   │   ├── Home.jsx
-│   │   ├── ExitPlan.jsx
-│   │   ├── AssistanceMap.jsx
-│   │   ├── MessageScanner.jsx
-│   │   ├── SafetyVault.jsx
-│   │   └── Assistant.jsx
-│   ├── services/
-│   │   ├── api.js            # Optional backend proxy stub (not connected to current UI)
-│   │   ├── safeHavensService.js
-│   │   ├── scamDetector.js
-│   │   └── storage.js
-│   ├── styles/
-│   ├── App.jsx
-│   └── main.jsx
-├── .env.example
-├── .gitignore
-├── index.html
-├── package.json
-└── vite.config.js
+│   ├── components/               # Reusable UI components
+│   │   └── common/               # Shared interface components
+│   ├── data/                     # Predefined safety scenarios
+│   ├── pages/                    # Main application pages
+│   │   ├── Assistant.jsx         # Travel Advisor
+│   │   ├── AssistanceMap.jsx     # Safe Havens map
+│   │   └── MessageScanner.jsx    # Scam Shield
+│   ├── services/                 # Application logic and services
+│   │   ├── api.js                # Optional API helper functions
+│   │   ├── safeHavensService.js  # Facility search functionality
+│   │   └── scamDetector.js       # Rule-based scam detection
+│   └── styles/                   # Application styles
+├── .env.example                  # Example environment configuration
+├── .gitignore                    # Files excluded from Git
+├── index.html                    # Application HTML entry point
+├── package.json                  # Dependencies and npm scripts
+├── package-lock.json             # Locked dependency versions
+├── vite.config.js                # Vite configuration
+└── README.md                     # Project documentation
 ```
+
+### Directory Overview
+
+- **`src/components/`** — Reusable interface components.
+- **`src/pages/`** — Main application pages and feature interfaces.
+- **`src/services/`** — Services for facility searches and local scam detection.
+- **`src/data/`** — Predefined safety scenarios used by the Travel Advisor.
+- **`src/styles/`** — Application styling.
+- **`public/`** — Static assets served by Vite.
 
 ---
 
-## Getting Started
+## 🧠 AI Implementation and Architecture
+
+EXIT PLAN AI currently combines locally executed detection rules, predefined safety guidance, browser storage, and external mapping services.
+
+- **Scam Shield:** Uses locally executed rules to identify suspicious message patterns.
+- **Travel Advisor:** Provides predefined safety guidance for selected scenarios.
+- **Safe Havens:** Uses external geospatial services to support location and facility searches.
+- **Local data storage:** Selected trip and safety information is stored in the browser.
+
+The current implementation does not require a dedicated application backend or connect to a live generative AI service.
+
+AI-powered development tools assisted during development. Their use does not mean that every application feature is powered by an AI model.
+
+---
+
+## 🏗️ Architecture Overview
+
+The application runs primarily in the user's browser.
+
+**React Interface → Local Application Logic → Browser Storage and External Mapping Services**
+
+- React components provide the user interface.
+- Local JavaScript logic handles application features, including rule-based scam analysis.
+- Browser Local Storage persists selected information.
+- External geospatial services support relevant map and facility searches.
+
+The current implementation does not require a dedicated application backend.
+
+---
+
+## 🚀 Getting Started
 
 ### Prerequisites
+- Node.js and npm
+- Git
 
-Install Node.js (version 18 or higher recommended).
+### Installation
 
-Official download: https://nodejs.org/
-
-### 1. Clone the repository
+**1. Clone the repository**
 
 ```bash
 git clone https://github.com/adithiach06/exit-plan-ai.git
+```
+
+**2. Navigate to the project directory**
+
+```bash
 cd exit-plan-ai
 ```
 
-### 2. Install dependencies
+**3. Install dependencies**
 
 ```bash
 npm install
 ```
 
-### 3. Start the development server
+**4. Start the development server**
 
 ```bash
 npm run dev
 ```
 
-Open the local URL printed in the terminal (typically `http://localhost:5173`). No backend server process needs to be started.
+**5. Open the application**
 
-### 4. Create a production build
+Open the local URL displayed in your terminal, typically `http://localhost:5173/`.
+
+### Production Build
+
+To create a production build, run:
 
 ```bash
 npm run build
 ```
 
-The production output is generated in the `dist/` directory. You can preview the production bundle locally with:
+Vite generates the production files in the `dist` directory.
+
+To preview the production build locally, run:
 
 ```bash
 npm run preview
@@ -180,30 +214,101 @@ npm run preview
 
 ---
 
-## Security and Privacy
+## 📱 Mobile Compatibility
 
-* **Zero Cloud Data Leakage:** Personal contacts and trip plans remain on the user's device in browser local storage.
-* **No Unsecured Keys:** No private API keys or third-party AI tokens are embedded in client-side code.
-* **Deterministic Privacy:** Scam Shield analyzes messages strictly in-memory without logging or network transfer.
-* **Clear Operational Boundaries:** The app does not claim to replace official emergency dispatch or provide infallible scam detection.
+EXIT PLAN AI is a browser-based application that can be accessed on compatible desktop and mobile browsers.
 
----
+The interface has undergone basic mobile-layout testing.
 
-## Limitations
-
-* **Live Facility Discovery Requires Connectivity:** While previously retrieved facility data and emergency helplines persist offline, searching new map areas requires an active internet connection to query OpenStreetMap.
-* **OpenStreetMap Data Coverage:** Facility information (phone numbers, hours, wheelchair accessibility) is crowd-sourced from OpenStreetMap and may be incomplete or outdated in rural or developing areas.
-* **Browser Storage Constraints:** LocalStorage is tied to a specific browser and profile. Clearing browser cookies or cache will erase saved contacts and itineraries.
-* **No Automatic Dispatch:** Emergency buttons initiate phone calls via the device's native dialer; the app cannot automatically track location or dispatch first responders.
+The current implementation is a web application, not a native Android or iOS application. Performance and feature availability may vary depending on the device, browser, network connection, and external services.
 
 ---
 
-## Responsible Use
+## 🔒 Privacy and Security Considerations
 
-EXIT PLAN AI is intended to support travel preparedness and safety awareness for solo travellers. Users should verify critical details when possible and immediately contact official emergency services (call **112** in India) in any life-threatening situation.
+- Scam message analysis is performed locally by the current rule-based implementation.
+- Selected trip and safety information is stored in browser Local Storage.
+- External mapping and geospatial services may receive queries necessary to provide their functionality.
+- Browser Local Storage is not encrypted storage and should not be treated as a secure vault for highly sensitive information.
+- The application does not currently provide automatic emergency dispatch or continuous location tracking.
+- Users should independently verify critical safety information and emergency contact details.
+
+**Security note:** Never commit private API keys, passwords, access tokens, or other secrets to the repository. The `.env.example` file is intended for example configuration only.
 
 ---
 
-## Acknowledgements
+## ⚠️ Current Limitations
 
-This project uses Leaflet, OpenStreetMap, Nominatim, and Overpass API data under open licences. All helplines referenced are official public services of the Government of India and relevant state authorities.
+EXIT PLAN AI is a working prototype, and several limitations should be considered:
+
+1. The Travel Advisor uses predefined guidance rather than live generative AI.
+2. Scam Shield uses rules and patterns; it may produce false positives or miss sophisticated scams.
+3. New Safe Havens searches depend on internet connectivity and external service availability.
+4. Map results depend on the completeness and accuracy of available geospatial data.
+5. Selected information is stored in browser Local Storage and may not synchronise across devices.
+6. SOS Help provides contact options and message preparation but does not automatically contact emergency services.
+7. Safety recommendations are decision-support information and cannot guarantee personal safety.
+
+---
+
+## 🔮 Future Enhancements
+
+Potential future improvements include:
+
+- Integrating a securely implemented AI backend for more flexible travel guidance.
+- Improving scam detection using additional validated detection techniques.
+- Enhancing offline access to essential safety resources.
+- Adding optional location-sharing workflows with explicit user consent.
+- Improving accessibility and mobile usability.
+- Expanding language support for Indian travellers.
+- Introducing additional privacy and data-protection safeguards.
+
+These are proposed enhancements, not claims about currently implemented functionality.
+
+---
+
+## 🙌 Acknowledgements
+
+EXIT PLAN AI was developed with assistance from AI-powered development tools, including **Google Antigravity** and **ChatGPT by OpenAI**, for development guidance, coding assistance, troubleshooting, and documentation.
+
+The project also uses open-source libraries and external services to support its functionality.
+
+Relevant technologies and resources include:
+
+- [React](https://react.dev/)
+- [Vite](https://vite.dev/)
+- [Leaflet](https://leafletjs.com/)
+- [OpenStreetMap contributors](https://www.openstreetmap.org/copyright)
+- [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API)
+- [Nominatim usage policy](https://operations.osmfoundation.org/policies/nominatim/)
+
+Third-party libraries, services, datasets, and assets remain subject to their respective licences, attribution requirements, and terms of use.
+
+AI tools were used as development aids. Their involvement does not replace the need to understand, test, and review the resulting implementation.
+
+---
+
+## 📌 Project Information
+
+**Project Name:** EXIT PLAN AI
+
+**Category:** Travel Safety and Cybersecurity
+
+**Target Audience:** Solo female travellers, particularly in India
+
+**Application Type:** React-based web application
+
+**Source Code:**  
+https://github.com/adithiach06/exit-plan-ai
+
+**Live Demo:** Add your deployed website URL here once deployment is complete.
+
+---
+
+## ❤️ Our Vision
+
+We believe that better preparation can help travellers make more informed decisions when unexpected situations arise.
+
+EXIT PLAN AI aims to make safety planning, digital awareness, and access to practical guidance more accessible, helping travellers feel better prepared when Plan A fails.
+
+**Because when Plan A fails, you're not out of options.**
